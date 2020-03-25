@@ -1,12 +1,12 @@
 {
   "targets": [
     {
-      "target_name": "ssvm",
+      "target_name": "<(module_name)",
       "cflags_cc": [ "-std=c++17", "-lboost" ],
       "cflags!": [ "-fno-exceptions", "-fno-rtti" ],
       "cflags_cc!": [ "-fno-exceptions", "-fno-rtti" ],
       "libraries": [
-        "/usr/lib/x86_64-linux-gnu/libboost_system.so.1.65.1",
+        "/usr/lib/x86_64-linux-gnu/libboost_system.so",
       ],
       "sources": [
         "addon.cc",
@@ -58,6 +58,17 @@
         "ssvm-core/thirdparty/googletest/include",
       ],
       'defines': [ 'NAPI_DISABLE_CPP_EXCEPTIONS' ],
+    },
+    {
+      "target_name": "action_after_build",
+      "type": "none",
+      "dependencies": [ "<(module_name)" ],
+      "copies": [
+        {
+          "files": [ "<(PRODUCT_DIR)/<(module_name).node" ],
+          "destination": "<(module_path)"
+        }
+      ]
     }
   ]
 }

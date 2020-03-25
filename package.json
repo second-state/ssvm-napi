@@ -5,14 +5,21 @@
   "repository": "https://github.com/second-state/ssvm-napi.git",
   "license": "Apache-2.0",
   "main": "index.js",
-  "private": false,
-  "gypfile": true,
+  "binary": {
+    "module_name": "ssvm",
+    "module_path": "./lib/binding/{platform}-{arch}/",
+    "host": "https://github.com/second-state/ssvm-napi/releases/download/",
+    "remote_path": "{version}",
+    "package_name": "{module_name}-{platform}-{arch}.tar.gz"
+  },
   "dependencies": {
-    "bindings": "~1.2.1",
-    "node-addon-api": "^1.0.0",
-    "node-gyp": "^6.1.0"
+    "node-addon-api": "^1.7.1",
+    "node-pre-gyp": "^0.14.0"
   },
   "devDependencies": {
     "node-gyp-cache": "^0.2.1"
+  },
+  "scripts": {
+    "install": "node-pre-gyp install --fallback-to-build"
   }
 }
