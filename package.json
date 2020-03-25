@@ -1,0 +1,18 @@
+{
+  "name": "ssvm",
+  "version": "0.1.0",
+  "description": "SSVM Node.js Addons",
+  "repository": "https://github.com/second-state/ssvm-napi.git",
+  "license": "Apache-2.0",
+  "main": "index.js",
+  "private": false,
+  "gypfile": true,
+  "dependencies": {
+    "bindings": "~1.2.1",
+    "node-addon-api": "^1.0.0",
+    "node-gyp": "^6.1.0"
+  },
+  "devDependencies": {
+    "node-gyp-cache": "^0.2.1"
+  }
+}
