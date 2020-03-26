@@ -1,6 +1,6 @@
 {
   "name": "ssvm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SSVM Node.js Addons",
   "repository": "https://github.com/second-state/ssvm-napi.git",
   "license": "Apache-2.0",
