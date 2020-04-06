@@ -1,15 +1,16 @@
 #include "ssvmaddon.h"
-#include <iostream>
+#include "support/log.h"
 
 Napi::FunctionReference SSVMAddon::Constructor;
 
 Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   Napi::HandleScope Scope(Env);
 
-  Napi::Function Func = DefineClass(
-      Env, "VM", {InstanceMethod("RunInt", &SSVMAddon::RunInt),
-                  InstanceMethod("RunString", &SSVMAddon::RunString),
-                  InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
+  Napi::Function Func =
+      DefineClass(Env, "VM",
+                  {InstanceMethod("RunInt", &SSVMAddon::RunInt),
+                   InstanceMethod("RunString", &SSVMAddon::RunString),
+                   InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
 
   Constructor = Napi::Persistent(Func);
   Constructor.SuppressDestruct();
@@ -19,47 +20,56 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
 }
 
 SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
-    : Napi::ObjectWrap<SSVMAddon>(Info), VM(this->Configure),
-      ResultData(nullptr) {
+    : Napi::ObjectWrap<SSVMAddon>(Info), VM(this->Configure), MemInst(nullptr) {
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
+  SSVM::Log::setErrorLoggingLevel();
 
   if (Info.Length() <= 0 || !Info[0].IsString()) {
     Napi::Error::New(Env, "wasm file expected").ThrowAsJavaScriptException();
     return;
   }
 
-  Napi::String Path = Info[0].As<Napi::String>();
-  this->VM.setPath(Path.Utf8Value());
-}
-
-SSVMAddon::~SSVMAddon() {
-  if (this->ResultData) {
-    delete[] ResultData;
+  std::string Path = Info[0].As<Napi::String>().Utf8Value();
+  if (!(this->VM.loadWasm(Path))) {
+    Napi::Error::New(Env, "wasm file load failed").ThrowAsJavaScriptException();
+    return;
   }
+
+  if (!(this->VM.validate())) {
+    Napi::Error::New(Env, "wasm file validate failed")
+        .ThrowAsJavaScriptException();
+    return;
+  }
+
+  if (!(this->VM.instantiate())) {
+    Napi::Error::New(Env, "wasm file instantiate failed")
+        .ThrowAsJavaScriptException();
+    return;
+  }
+
+  // Get memory instance
+  auto &Store = this->VM.getStoreManager();
+  auto *ModInst = *(Store.getActiveModule());
+  uint32_t MemAddr = *(ModInst->getMemAddr(0));
+  this->MemInst = *Store.getMemory(MemAddr);
 }
 
-void SSVMAddon::Prepare(const Napi::CallbackInfo &Info,
-                        std::vector<uint32_t> &Arguments,
-                        std::vector<uint8_t> &MemData,
-                        unsigned int &DataPageSize) {
+void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
+                                std::vector<SSVM::ValVariant> &Args) {
   for (std::size_t I = 1; I < Info.Length(); I++) {
-    Napi::Value Argument = Info[I];
-    if (Argument.IsNumber()) {
-      uint32_t U32Value = Argument.As<Napi::Number>().Uint32Value();
-      Arguments.push_back(U32Value);
+    Napi::Value Arg = Info[I];
+    uint32_t MallocSize = 0, MallocAddr = 0;
+    if (Arg.IsNumber()) {
+      Args.emplace_back(Arg.As<Napi::Number>().Uint32Value());
       continue;
-    }
-
-    uint32_t MallocSize = 0;
-    if (Argument.IsString()) {
-      std::string StrArg = Argument.As<Napi::String>().Utf8Value();
+    } else if (Arg.IsString()) {
+      std::string StrArg = Arg.As<Napi::String>().Utf8Value();
       MallocSize = StrArg.length();
-    } else if (Argument.IsTypedArray() &&
-               Argument.As<Napi::TypedArray>().TypedArrayType() ==
+    } else if (Arg.IsTypedArray() &&
+               Arg.As<Napi::TypedArray>().TypedArrayType() ==
                    napi_uint8_array) {
-      Napi::ArrayBuffer DataBuffer =
-          Argument.As<Napi::TypedArray>().ArrayBuffer();
+      Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
       MallocSize = DataBuffer.ByteLength();
     } else {
       // TODO: support other types
@@ -68,182 +78,114 @@ void SSVMAddon::Prepare(const Napi::CallbackInfo &Info,
       return;
     }
 
-    // Initialize VM
-    this->VM.initVMEnv();
-    this->VM.loadWasm();
-    this->VM.validate();
-    this->VM.setEntryFuncName("__wbindgen_malloc");
-    this->VM.appendArgument(MallocSize);
-    this->VM.instantiate();
-
-    // Restore memory
-    if (DataPageSize > 0) {
-      this->VM.setMemoryDataPageSize(0, DataPageSize);
-    }
-    if (MemData.size() > 0) {
-      this->VM.setMemoryWithBytes(MemData, 0, 0, MemData.size());
-    }
-
-    this->VM.runWasm();
-
-    // Get malloc return address
-    std::vector<SSVM::Executor::Value> Rets;
-    this->VM.getReturnValue(Rets);
-    uint32_t MallocAddr = std::get<uint32_t>(Rets[0]);
-
-    // Update memory data
-    MemData.clear();
-    this->VM.getMemoryToBytesAll(0, MemData, DataPageSize);
+    // Malloc
+    std::vector<SSVM::ValVariant> Params, Rets;
+    Params.emplace_back(MallocSize);
+    Rets = *(this->VM.execute("__wbindgen_malloc", Params));
+    MallocAddr = std::get<uint32_t>(Rets[0]);
 
     // Prepare arguments and memory data
-    Arguments.push_back(MallocAddr);
-    Arguments.push_back(MallocSize);
+    Args.emplace_back(MallocAddr);
+    Args.emplace_back(MallocSize);
 
     // Setup memory
-    if (Argument.IsString()) {
-      std::string StrArg = Argument.As<Napi::String>().Utf8Value();
+    if (Arg.IsString()) {
+      std::string StrArg = Arg.As<Napi::String>().Utf8Value();
       std::vector<uint8_t> StrArgVec(StrArg.begin(), StrArg.end());
-      for (std::size_t J = 0; J < StrArgVec.size(); J++) {
-        MemData[MallocAddr + J] = StrArgVec[J];
-      }
-    } else if (Argument.IsTypedArray() &&
-               Argument.As<Napi::TypedArray>().TypedArrayType() ==
+      this->MemInst->setBytes(StrArgVec, MallocAddr, 0, StrArgVec.size());
+    } else if (Arg.IsTypedArray() &&
+               Arg.As<Napi::TypedArray>().TypedArrayType() ==
                    napi_uint8_array) {
-      Napi::ArrayBuffer DataBuffer =
-          Argument.As<Napi::TypedArray>().ArrayBuffer();
+      Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
       uint8_t *Data = (uint8_t *)DataBuffer.Data();
-      for (size_t J = 0; J < DataBuffer.ByteLength(); J++) {
-        MemData[MallocAddr + J] = Data[J];
-      }
+      this->MemInst->setArray(Data, MallocAddr, DataBuffer.ByteLength());
     }
-
-    this->VM.cleanup();
   }
 }
 
-SSVM::VM::ErrCode SSVMAddon::Run(const Napi::CallbackInfo &Info,
-                                 std::vector<uint32_t> &Arguments,
-                                 std::vector<uint8_t> &MemData,
-                                 unsigned int &DataPageSize) {
-
-  // Prepare start function
-  std::string StartFunction = "";
-  if (Info.Length() > 0) {
-    StartFunction = Info[0].As<Napi::String>().Utf8Value();
-  }
-
-  // Initialize VM
-  this->VM.initVMEnv();
-  this->VM.loadWasm();
-  this->VM.validate();
-  this->VM.setEntryFuncName(StartFunction);
-  this->VM.instantiate();
-
-  // Restore memory
-  if (DataPageSize > 0) {
-    this->VM.setMemoryDataPageSize(0, DataPageSize);
-  }
-  if (MemData.size() > 0) {
-    this->VM.setMemoryWithBytes(MemData, 0, 0, MemData.size());
-  }
-
-  // Prepare arguments
-  for (auto Argument : Arguments) {
-    this->VM.appendArgument(Argument);
-  }
-
-  SSVM::VM::ErrCode Err = this->VM.runWasm();
-  MemData.clear();
-  this->VM.getMemoryToBytesAll(0, MemData, DataPageSize);
-
-  return Err;
+void SSVMAddon::ReleaseResource(const uint32_t Offset, const uint32_t Size) {
+  std::vector<SSVM::ValVariant> Params = {Offset, Size};
+  this->VM.execute("__wbindgen_free", Params);
 }
 
 Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
-  std::vector<uint32_t> Arguments;
-  std::vector<uint8_t> MemData;
-  unsigned int DataPageSize = 0;
-  this->Prepare(Info, Arguments, MemData, DataPageSize);
-  SSVM::VM::ErrCode Err = this->Run(Info, Arguments, MemData, DataPageSize);
-  if (Err != SSVM::VM::ErrCode::Success) {
+  std::string FuncName = "";
+  if (Info.Length() > 0) {
+    FuncName = Info[0].As<Napi::String>().Utf8Value();
+  }
+
+  std::vector<SSVM::ValVariant> Args, Rets;
+  this->PrepareResource(Info, Args);
+  auto Res = this->VM.execute(FuncName, Args);
+
+  if (Res) {
+    Rets = *Res;
+    return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
+  } else {
     Napi::Error::New(Info.Env(), "SSVM execution failed")
         .ThrowAsJavaScriptException();
     return Napi::Value();
   }
-
-  std::vector<SSVM::Executor::Value> Rets;
-  this->VM.getReturnValue(Rets);
-  uint32_t ReturnValue = std::get<uint32_t>(Rets[0]);
-  this->VM.cleanup();
-
-  return Napi::Number::New(Info.Env(), ReturnValue);
 }
 
 Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
-  std::vector<uint32_t> Arguments;
-  std::vector<uint8_t> MemData;
-  unsigned int DataPageSize = 0;
-  this->Prepare(Info, Arguments, MemData, DataPageSize);
+  std::string FuncName = "";
+  if (Info.Length() > 0) {
+    FuncName = Info[0].As<Napi::String>().Utf8Value();
+  }
 
   uint32_t ResultMemAddr = 8;
-  Arguments.insert(Arguments.begin(), ResultMemAddr);
-  SSVM::VM::ErrCode Err = this->Run(Info, Arguments, MemData, DataPageSize);
-
-  if (Err != SSVM::VM::ErrCode::Success) {
+  std::vector<SSVM::ValVariant> Args, Rets;
+  Args.emplace_back(ResultMemAddr);
+  this->PrepareResource(Info, Args);
+  auto Res = this->VM.execute(FuncName, Args);
+  if (!Res) {
     Napi::Error::New(Info.Env(), "SSVM execution failed")
         .ThrowAsJavaScriptException();
     return Napi::Value();
   }
 
-  std::vector<uint8_t> ResultMem;
-  this->VM.getMemoryToBytes(0, ResultMemAddr, ResultMem, 8);
-
+  std::vector<uint8_t> ResultMem = *(this->MemInst->getBytes(ResultMemAddr, 8));
   uint32_t ResultDataAddr = ResultMem[0] | (ResultMem[1] << 8) |
                             (ResultMem[2] << 16) | (ResultMem[3] << 24);
   uint32_t ResultDataLen = ResultMem[4] | (ResultMem[5] << 8) |
                            (ResultMem[6] << 16) | (ResultMem[7] << 24);
-
-  std::vector<uint8_t> ResultData;
-  this->VM.getMemoryToBytes(0, ResultDataAddr, ResultData, ResultDataLen);
-  this->VM.cleanup();
+  std::vector<uint8_t> ResultData =
+      *(this->MemInst->getBytes(ResultDataAddr, ResultDataLen));
+  this->ReleaseResource(ResultDataAddr, ResultDataLen);
 
   std::string ResultString(ResultData.begin(), ResultData.end());
   return Napi::String::New(Info.Env(), ResultString);
 }
 
 Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
-  std::vector<uint32_t> Arguments;
-  std::vector<uint8_t> MemData;
-  unsigned int DataPageSize = 0;
-  this->Prepare(Info, Arguments, MemData, DataPageSize);
+  std::string FuncName = "";
+  if (Info.Length() > 0) {
+    FuncName = Info[0].As<Napi::String>().Utf8Value();
+  }
 
   uint32_t ResultMemAddr = 8;
-  Arguments.insert(Arguments.begin(), ResultMemAddr);
-  SSVM::VM::ErrCode Err = this->Run(Info, Arguments, MemData, DataPageSize);
-  if (Err != SSVM::VM::ErrCode::Success) {
+  std::vector<SSVM::ValVariant> Args, Rets;
+  Args.emplace_back(ResultMemAddr);
+  this->PrepareResource(Info, Args);
+  auto Res = this->VM.execute(FuncName, Args);
+  if (!Res) {
     Napi::Error::New(Info.Env(), "SSVM execution failed")
         .ThrowAsJavaScriptException();
     return Napi::Value();
   }
 
-  std::vector<uint8_t> ResultMem;
-  this->VM.getMemoryToBytes(0, ResultMemAddr, ResultMem, 8);
-
+  std::vector<uint8_t> ResultMem = *(this->MemInst->getBytes(ResultMemAddr, 8));
   uint32_t ResultDataAddr = ResultMem[0] | (ResultMem[1] << 8) |
                             (ResultMem[2] << 16) | (ResultMem[3] << 24);
   uint32_t ResultDataLen = ResultMem[4] | (ResultMem[5] << 8) |
                            (ResultMem[6] << 16) | (ResultMem[7] << 24);
+  this->ResultData = *(this->MemInst->getBytes(ResultDataAddr, ResultDataLen));
+  this->ReleaseResource(ResultDataAddr, ResultDataLen);
 
-  std::vector<uint8_t> ResultData;
-  this->VM.getMemoryToBytes(0, ResultDataAddr, ResultData, ResultDataLen);
-  this->VM.cleanup();
-
-  this->ResultData = new uint8_t[ResultDataLen];
-  std::memcpy(this->ResultData, ResultData.data(), ResultDataLen);
   Napi::ArrayBuffer ResultArrayBuffer =
-      Napi::ArrayBuffer::New(Info.Env(), this->ResultData, ResultDataLen);
+      Napi::ArrayBuffer::New(Info.Env(), &(this->ResultData[0]), ResultDataLen);
   Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
       Info.Env(), ResultDataLen, ResultArrayBuffer, 0, napi_uint8_array);
-
   return ResultTypedArray;
 }
