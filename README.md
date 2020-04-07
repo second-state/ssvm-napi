@@ -122,22 +122,22 @@ console.log(ret);
 
 ret = vm.RunUint8Array("reverse", Uint8Array.from([1, 2, 3]));
 console.log(ret);
+
+ret = vm.RunInt("add", 999, -111);
+console.log(ret);
+
+ret = vm.RunUint8Array("reverse", Uint8Array.from([30, 20, 10]));
+console.log(ret);
 ```
 
 ## Execute and check results
 
 ```
-node main.js
-
-...ommited...
+$ node main.js
 
 hello world
-
-...ommited...
-
 7
-
-...ommited...
-
-Uint8Array(3) [ 3, 2, 1 ]
+Uint8Array [ 3, 2, 1 ]
+888
+Uint8Array [ 10, 20, 30 ]
 ```
