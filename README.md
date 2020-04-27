@@ -120,13 +120,13 @@ console.log(ret);
 ret = vm.RunInt("add", 3, 4);
 console.log(ret);
 
-ret = vm.RunUint8Array("reverse", Uint8Array.from([1, 2, 3]));
+ret = vm.RunUint8Array("reverse", Uint8Array.from([1, 2, 3, 4, 5, 6]));
 console.log(ret);
 
 ret = vm.RunInt("add", 999, -111);
 console.log(ret);
 
-ret = vm.RunUint8Array("reverse", Uint8Array.from([30, 20, 10]));
+ret = vm.RunUint8Array("reverse", Uint8Array.from([60, 50, 40, 30, 20, 10]));
 console.log(ret);
 ```
 
@@ -137,7 +137,7 @@ $ node main.js
 
 hello world
 7
-Uint8Array [ 3, 2, 1 ]
+Uint8Array [ 6, 5, 4, 3, 2, 1 ]
 888
-Uint8Array [ 10, 20, 30 ]
+Uint8Array [ 10, 20, 30, 40, 50, 60 ]
 ```
