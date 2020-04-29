@@ -75,6 +75,23 @@ pub fn reverse(v: Vec<u8>) -> Vec<u8> {
 }
 ```
 
+In addition to the above code, functions like the example below can deliberately parse incoming JSON string data. This is an additional say example which uses valid JSON instead of just plain string.
+```rust
+use serde_json::json;
+use wasm_bindgen::prelude::*;
+use serde_json::{Result, Value};
+
+#[wasm_bindgen]
+pub fn say_with_json(s: String) -> String {
+    let json_as_value: Value = serde_json::from_str(&s).unwrap();
+    let first_word = String::from("Hello ");
+    let concatenation = first_word + &serde_json::to_string(&json_as_value["name"]).unwrap();
+    let response_object = json!({ "result": concatenation });
+    return serde_json::to_string(&response_object).unwrap();
+}
+```
+When given `{"name": "Tim"}` this `say_with_json` function returns `Hello Tim` wrapped in a response object (as valid JSON) like this `{"ssvm_response": ["{\"result\": \"Hello Tim\"}"]}`
+
 ## Build the WASM bytecode
 
 ```
