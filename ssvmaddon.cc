@@ -20,9 +20,14 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
 }
 
 SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
-    : Napi::ObjectWrap<SSVMAddon>(Info), VM(this->Configure), MemInst(nullptr) {
+    : Napi::ObjectWrap<SSVMAddon>(Info), Configure(nullptr), VM(nullptr), MemInst(nullptr) {
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
+
+  Configure = new SSVM::VM::Configure();
+  Configure->addVMType(SSVM::VM::Configure::VMType::Wasi);
+  VM = new SSVM::VM::VM(*Configure);
+
   SSVM::Log::setErrorLoggingLevel();
 
   if (Info.Length() <= 0 || !Info[0].IsString()) {
@@ -31,25 +36,25 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
   }
 
   std::string Path = Info[0].As<Napi::String>().Utf8Value();
-  if (!(this->VM.loadWasm(Path))) {
+  if (!(this->VM->loadWasm(Path))) {
     Napi::Error::New(Env, "wasm file load failed").ThrowAsJavaScriptException();
     return;
   }
 
-  if (!(this->VM.validate())) {
+  if (!(this->VM->validate())) {
     Napi::Error::New(Env, "wasm file validate failed")
         .ThrowAsJavaScriptException();
     return;
   }
 
-  if (!(this->VM.instantiate())) {
+  if (!(this->VM->instantiate())) {
     Napi::Error::New(Env, "wasm file instantiate failed")
         .ThrowAsJavaScriptException();
     return;
   }
 
   // Get memory instance
-  auto &Store = this->VM.getStoreManager();
+  auto &Store = this->VM->getStoreManager();
   auto *ModInst = *(Store.getActiveModule());
   uint32_t MemAddr = *(ModInst->getMemAddr(0));
   this->MemInst = *Store.getMemory(MemAddr);
@@ -81,7 +86,7 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
     // Malloc
     std::vector<SSVM::ValVariant> Params, Rets;
     Params.emplace_back(MallocSize);
-    Rets = *(this->VM.execute("__wbindgen_malloc", Params));
+    Rets = *(this->VM->execute("__wbindgen_malloc", Params));
     MallocAddr = std::get<uint32_t>(Rets[0]);
 
     // Prepare arguments and memory data
@@ -105,7 +110,7 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
 
 void SSVMAddon::ReleaseResource(const uint32_t Offset, const uint32_t Size) {
   std::vector<SSVM::ValVariant> Params = {Offset, Size};
-  this->VM.execute("__wbindgen_free", Params);
+  this->VM->execute("__wbindgen_free", Params);
 }
 
 Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
@@ -116,7 +121,7 @@ Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
 
   std::vector<SSVM::ValVariant> Args, Rets;
   this->PrepareResource(Info, Args);
-  auto Res = this->VM.execute(FuncName, Args);
+  auto Res = this->VM->execute(FuncName, Args);
 
   if (Res) {
     Rets = *Res;
@@ -138,7 +143,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
   std::vector<SSVM::ValVariant> Args, Rets;
   Args.emplace_back(ResultMemAddr);
   this->PrepareResource(Info, Args);
-  auto Res = this->VM.execute(FuncName, Args);
+  auto Res = this->VM->execute(FuncName, Args);
   if (!Res) {
     Napi::Error::New(Info.Env(), "SSVM execution failed")
         .ThrowAsJavaScriptException();
@@ -168,7 +173,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
   std::vector<SSVM::ValVariant> Args, Rets;
   Args.emplace_back(ResultMemAddr);
   this->PrepareResource(Info, Args);
-  auto Res = this->VM.execute(FuncName, Args);
+  auto Res = this->VM->execute(FuncName, Args);
   if (!Res) {
     Napi::Error::New(Info.Env(), "SSVM execution failed")
         .ThrowAsJavaScriptException();

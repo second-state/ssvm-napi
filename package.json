@@ -1,6 +1,6 @@
 {
   "name": "ssvm",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Second State WebAssembly VM for Node.js Addon",
   "keywords": [
     "wasm",
@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "node-addon-api": "^1.7.1",
-    "node-pre-gyp": "^0.14.0"
+    "node-pre-gyp": "^0.14.0",
+    "npm": "^6.14.5"
   },
   "devDependencies": {
     "node-gyp-cache": "^0.2.1"

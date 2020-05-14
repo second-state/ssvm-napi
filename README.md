@@ -6,8 +6,8 @@ The [Second State VM (SSVM)](https://github.com/second-state/ssvm) is a high per
 
 SSVM Node.js Addon is in active development.
 
-In current stage, our prebuilt version **only supports** `Boost 1.65.1` and x64 Linux.
-If you want to use other version of Boost library, you could use `--build-from-source` flag during addon installation.
+In current stage, our prebuilt version **only supports** x86\_64 Linux.
+Or you could use `--build-from-source` flag to build from source during addon installation.
 
 
 ## Setup for Rust, Nodejs, and ssvmup
@@ -21,8 +21,8 @@ $ source $HOME/.cargo/env
 
 $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
 
-$ nvm install v10.19.0
-$ nvm use v10.19.0
+$ nvm install v14.2.0
+$ nvm use v14.2.0
 
 $ npm i -g ssvmup
 ```
@@ -99,13 +99,6 @@ ssvmup build
 ```
 
 After building, our target wasm file is located at `pkg/hello_bg.wasm`.
-
-## Requirements for SSVM addon
-
-```
-apt update
-apt install -y build-essential libboost-all-dev
-```
 
 ## Install SSVM addon for your application
 
