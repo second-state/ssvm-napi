@@ -10,7 +10,8 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
       DefineClass(Env, "VM",
                   {InstanceMethod("RunInt", &SSVMAddon::RunInt),
                    InstanceMethod("RunString", &SSVMAddon::RunString),
-                   InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
+                   InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array),
+                   InstanceMethod("GetMemoryBuffer", &SSVMAddon::GetMemoryBuffer)});
 
   Constructor = Napi::Persistent(Func);
   Constructor.SuppressDestruct();
@@ -187,5 +188,14 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
       Napi::ArrayBuffer::New(Info.Env(), &(this->ResultData[0]), ResultDataLen);
   Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
       Info.Env(), ResultDataLen, ResultArrayBuffer, 0, napi_uint8_array);
+  return ResultTypedArray;
+}
+
+Napi::Value SSVMAddon::GetMemoryBuffer(const Napi::CallbackInfo &Info) {
+  std::vector<uint8_t> ResultMem = this->MemInst->getDataVector();
+  Napi::ArrayBuffer ResultArrayBuffer =
+      Napi::ArrayBuffer::New(Info.Env(), &(ResultMem[0]), ResultMem.size());
+  Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
+      Info.Env(), ResultMem.size(), ResultArrayBuffer, 0, napi_uint8_array);
   return ResultTypedArray;
 }
