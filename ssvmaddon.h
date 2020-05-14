@@ -26,6 +26,7 @@ private:
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
   Napi::Value RunUint8Array(const Napi::CallbackInfo &Info);
+  Napi::Value GetMemoryBuffer(const Napi::CallbackInfo &Info);
 };
 
 #endif
