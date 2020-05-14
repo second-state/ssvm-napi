@@ -2,11 +2,10 @@
   "targets": [
     {
       "target_name": "<(module_name)",
-      "cflags_cc": [ "-std=c++17", "-lboost" ],
+      "cflags_cc": [ "-std=c++17" ],
       "cflags!": [ "-fno-exceptions", "-fno-rtti" ],
       "cflags_cc!": [ "-fno-exceptions", "-fno-rtti" ],
       "libraries": [
-        "/usr/lib/x86_64-linux-gnu/libboost_system.so",
       ],
       "sources": [
         "addon.cc",
@@ -33,8 +32,11 @@
         "ssvm-core/lib/ast/expression.cpp",
         "ssvm-core/lib/ast/module.cpp",
         "ssvm-core/lib/ast/instruction.cpp",
+        "ssvm-core/lib/host/wasi/wasienv.cpp",
+        "ssvm-core/lib/host/wasi/wasifunc.cpp",
+        "ssvm-core/lib/host/wasi/wasimodule.cpp",
         "ssvm-core/lib/support/log.cpp",
-        "ssvm-core/lib/expvm/vm.cpp",
+        "ssvm-core/lib/vm/vm.cpp",
         "ssvm-core/lib/validator/validator.cpp",
         "ssvm-core/lib/validator/formchecker.cpp",
         "ssvm-core/lib/loader/loader.cpp",
