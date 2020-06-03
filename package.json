@@ -1,11 +1,12 @@
 {
   "name": "ssvm",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Second State WebAssembly VM for Node.js Addon",
   "keywords": [
     "wasm",
     "rust",
     "webassembly",
+    "wasi",
     "runtime",
     "serverless",
     "fucntion-as-a-service"

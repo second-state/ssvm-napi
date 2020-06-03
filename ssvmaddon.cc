@@ -1,9 +1,6 @@
 #include "ssvmaddon.h"
 #include "support/log.h"
 #include "support/span.h"
-#include <iterator>
-#include <filesystem>
-#include <iostream>
 
 Napi::FunctionReference SSVMAddon::Constructor;
 
