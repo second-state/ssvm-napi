@@ -10,7 +10,7 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   Napi::Function Func =
       DefineClass(Env, "VM",
                   {InstanceMethod("EnableWasmBindgen", &SSVMAddon::EnableWasmBindgen),
-                   InstanceMethod("Run", &SSVMAddon::Run),
+                   // InstanceMethod("Run", &SSVMAddon::Run),
                    InstanceMethod("RunInt", &SSVMAddon::RunInt),
                    InstanceMethod("RunString", &SSVMAddon::RunString),
                    InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
@@ -49,6 +49,7 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
   std::vector<std::string> &CmdArgsVec = WasiMod->getEnv().getCmdArgs();
   CmdArgsVec.push_back(InputPath);
   WasiEnvDefaultLength = CmdArgsVec.size();
+  EnableWasmBindgen(Info);
 }
 
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info) {

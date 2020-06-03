@@ -140,7 +140,6 @@ Make sure you use the corresponding VM method to the rust return type.
 ```javascript
 var ssvm = require('ssvm');
 var vm = new ssvm.VM("hello_bg.wasm");
-vm.EnableWasmBindgen();
 var ret = vm.RunString("say", "world");
 console.log(ret);
 
@@ -170,9 +169,9 @@ Uint8Array [ 10, 20, 30, 40, 50, 60 ]
 ```
 
 
-### General Wasm32-wasi target
+### General Wasm32-wasi target (Currently disabled)
 
-### Create a new rust project
+#### Create a new rust project
 
 ```bash
 cargo new rsa-example
