@@ -3,6 +3,7 @@
 
 #include "vm/configure.h"
 #include "vm/vm.h"
+#include "host/wasi/wasimodule.h"
 #include <napi.h>
 #include <string>
 #include <vector>
@@ -21,15 +22,22 @@ private:
   SSVM::VM::Configure *Configure;
   SSVM::VM::VM *VM;
   SSVM::Runtime::Instance::MemoryInstance *MemInst;
+  size_t WasiEnvDefaultLength;
+  SSVM::Host::WasiModule *WasiMod;
+  bool WBMode;
+  std::string InputPath;
   std::vector<uint8_t> ResultData;
 
-  void PrepareResource(const Napi::CallbackInfo &Info,
-                       std::vector<SSVM::ValVariant> &Args);
-  void ReleaseResource(const uint32_t Offset, const uint32_t Size);
+  void EnableWasmBindgen(const Napi::CallbackInfo &Info);
+  void PrepareResource(const Napi::CallbackInfo &Info);
+  void ReleaseResource();
+  void PrepareResourceWB(const Napi::CallbackInfo &Info,
+      std::vector<SSVM::ValVariant> &Args);
+  void ReleaseResourceWB(const uint32_t Offset, const uint32_t Size);
+  Napi::Value Run(const Napi::CallbackInfo &Info);
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
   Napi::Value RunUint8Array(const Napi::CallbackInfo &Info);
-  Napi::Value GetMemoryBuffer(const Napi::CallbackInfo &Info);
 };
 
 #endif
