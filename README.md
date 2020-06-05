@@ -90,6 +90,7 @@ pub fn reverse(v: Vec<u8>) -> Vec<u8> {
 ```
 
 In addition to the above code, functions like the example below can deliberately parse incoming JSON string data. This is an additional say example that uses valid JSON instead of just plain string.
+Please note, in addition to the dependencies above, you will now also need to add `serde_json = "1.0.53"` to your Cargo.toml file for the following `say_with_json` demonstration to work.
 
 ```rust
 use serde_json::json;
