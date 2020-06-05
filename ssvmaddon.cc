@@ -124,7 +124,14 @@ void SSVMAddon::PrepareResourceWB(const Napi::CallbackInfo &Info,
     // Malloc
     std::vector<SSVM::ValVariant> Params, Rets;
     Params.emplace_back(MallocSize);
-    Rets = *(VM->execute("__wbindgen_malloc", Params));
+    auto Res = VM->execute("__wbindgen_malloc", Params);
+    if (!Res) {
+      std::string FatalLocation("SSVMAddon.cc::PrepareResourceWB::__wbindgen_malloc");
+      std::string FatalError("SSVM-js malloc failed: wasm-bindgen helper function <__wbindgen_malloc> not found.\n");
+      napi_fatal_error(FatalLocation.c_str(), FatalLocation.size(), FatalError.c_str(), FatalError.size());
+      return;
+    }
+    Rets = *Res;
     MallocAddr = std::get<uint32_t>(Rets[0]);
 
     // Prepare arguments and memory data
@@ -153,7 +160,13 @@ void SSVMAddon::ReleaseResource() {
 
 void SSVMAddon::ReleaseResourceWB(const uint32_t Offset, const uint32_t Size) {
   std::vector<SSVM::ValVariant> Params = {Offset, Size};
-  VM->execute("__wbindgen_free", Params);
+  auto Res = VM->execute("__wbindgen_free", Params);
+  if (!Res) {
+    std::string FatalLocation("SSVMAddon.cc::PrepareResourceWB::__wbindgen_free");
+    std::string FatalError("SSVM-js free failed: wasm-bindgen helper function <__wbindgen_free> not found.\n");
+    napi_fatal_error(FatalLocation.c_str(), FatalLocation.size(), FatalError.c_str(), FatalError.size());
+    return;
+  }
 }
 
 Napi::Value SSVMAddon::Run(const Napi::CallbackInfo &Info) {
@@ -167,7 +180,6 @@ Napi::Value SSVMAddon::Run(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  std::vector<SSVM::ValVariant> Rets;
   PrepareResource(Info);
   std::vector<std::string> &CmdArgsVec = WasiMod->getEnv().getCmdArgs();
   auto Res = VM->runWasmFile(CmdArgsVec[0], FuncName);
@@ -225,6 +237,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
       .ThrowAsJavaScriptException();
     return Napi::Value();
   }
+  Rets = *Res;
 
   uint32_t ResultDataAddr = 0;
   uint32_t ResultDataLen = 0;
@@ -274,6 +287,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
       .ThrowAsJavaScriptException();
     return Napi::Value();
   }
+  Rets = *Res;
 
   uint32_t ResultDataAddr = 0;
   uint32_t ResultDataLen = 0;
