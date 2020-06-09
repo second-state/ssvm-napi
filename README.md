@@ -357,7 +357,7 @@ module.exports.generate_key_pair = function(bits) {
 const ssvm = require('ssvm');
 const path = require('path').join(__dirname, 'target/wasm32-wasi/release/rsa_example.wasm');
 const wasi = {};
-vm = new ssvm.VM(path, {});
+vm = new ssvm.VM(path, {'DisableWasmBindgen': true});
 ```
 
 #### Execute and check results
