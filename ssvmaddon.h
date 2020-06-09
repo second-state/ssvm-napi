@@ -18,6 +18,10 @@ public:
   };
 
 private:
+  enum class InputMode {
+    File,
+    Bytecode
+  };
   static Napi::FunctionReference Constructor;
   SSVM::VM::Configure *Configure;
   SSVM::VM::VM *VM;
@@ -25,7 +29,9 @@ private:
   size_t WasiEnvDefaultLength;
   SSVM::Host::WasiModule *WasiMod;
   bool WBMode;
+  InputMode IMode;
   std::string InputPath;
+  std::vector<uint8_t> InputBytecode;
   std::vector<uint8_t> ResultData;
 
   void EnableWasmBindgen(const Napi::CallbackInfo &Info);
