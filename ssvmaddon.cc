@@ -29,16 +29,24 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
     Napi::Env Env = Info.Env();
     Napi::HandleScope Scope(Env);
 
-    if (Info.Length() <= 0 || !Info[0].IsString()) {
-      Napi::Error::New(Env, "wasm file expected").ThrowAsJavaScriptException();
+    if (Info.Length() <= 0 || (!Info[0].IsString() && !Info[0].IsTypedArray())) {
+      Napi::Error::New(Env, "Expected a Wasm file or a Wasm binary sequence.").ThrowAsJavaScriptException();
       return;
     }
-    if (Info.Length() == 1 && Info[0].IsString()) {
+    if (Info.Length() == 1) {
       // WasmBindgen mode
+      // Assume the WASI options object is {}
       WBMode = true;
-    } else if (Info.Length() == 2 && Info[0].IsString() && Info[1].IsObject()) {
-      // WASI mode
-      WBMode = false;
+    } else if (Info.Length() == 2 && Info[1].IsObject()) {
+      // Get a WASI options object
+      Napi::Object Options = Info[1].As<Napi::Object>();
+      if (Options.Has("DisableWasmBindgen")
+          && Options.Get("DisableWasmBindgen").IsBoolean()
+          && Options.Get("DisableWasmBindgen").As<Napi::Boolean>().Value()) {
+        WBMode = false;
+      } else {
+        WBMode = true;
+      }
     } else {
       Napi::Error::New(Env, "Too many arguments for initializing SSVM-js").ThrowAsJavaScriptException();
       return;
@@ -50,13 +58,31 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
 
     SSVM::Log::setErrorLoggingLevel();
 
-    InputPath = Info[0].As<Napi::String>().Utf8Value();
+    if (Info[0].IsString()) {
+      IMode = InputMode::File;
+      InputPath = Info[0].As<Napi::String>().Utf8Value();
+    } else if (Info[0].IsTypedArray()
+        && Info[0].As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array) {
+      IMode = InputMode::Bytecode;
+      Napi::ArrayBuffer DataBuffer = Info[0].As<Napi::TypedArray>().ArrayBuffer();
+      InputBytecode = std::vector<uint8_t>(
+          static_cast<uint8_t*>(DataBuffer.Data()),
+          static_cast<uint8_t*>(DataBuffer.Data()) + DataBuffer.ByteLength());
+    } else {
+      Napi::Error::New(Env, "Wasm bytecode is not a valid Uint8Array.").ThrowAsJavaScriptException();
+      return;
+    }
 
     WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
         VM->getImportModule(SSVM::VM::Configure::VMType::Wasi));
 
     std::vector<std::string> &CmdArgsVec = WasiMod->getEnv().getCmdArgs();
-    CmdArgsVec.push_back(InputPath);
+    if (IMode == InputMode::File) {
+      CmdArgsVec.push_back(InputPath);
+    } else {
+      CmdArgsVec.push_back(
+          std::string(InputBytecode.begin(), InputBytecode.end()));
+    }
     WasiEnvDefaultLength = CmdArgsVec.size();
 
     if (WBMode) {
@@ -162,7 +188,7 @@ void SSVMAddon::ReleaseResourceWB(const uint32_t Offset, const uint32_t Size) {
   std::vector<SSVM::ValVariant> Params = {Offset, Size};
   auto Res = VM->execute("__wbindgen_free", Params);
   if (!Res) {
-    std::string FatalLocation("SSVMAddon.cc::PrepareResourceWB::__wbindgen_free");
+    std::string FatalLocation("SSVMAddon.cc::ReleaseResourceWB::__wbindgen_free");
     std::string FatalError("SSVM-js free failed: wasm-bindgen helper function <__wbindgen_free> not found.\n");
     napi_fatal_error(FatalLocation.c_str(), FatalLocation.size(), FatalError.c_str(), FatalError.size());
     return;
@@ -181,8 +207,12 @@ Napi::Value SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   }
 
   PrepareResource(Info);
-  std::vector<std::string> &CmdArgsVec = WasiMod->getEnv().getCmdArgs();
-  auto Res = VM->runWasmFile(CmdArgsVec[0], FuncName);
+  SSVM::Expect<std::vector<SSVM::ValVariant>> Res;
+  if (IMode == InputMode::File) {
+    Res = VM->runWasmFile(InputPath, FuncName);
+  } else {
+    Res = VM->runWasmFile(InputBytecode, FuncName);
+  }
   if (!Res) {
     Napi::Error::New(Info.Env(), "SSVM execution failed")
       .ThrowAsJavaScriptException();
@@ -325,23 +355,21 @@ void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
 
-  if (!(VM->loadWasm(InputPath))) {
-    Napi::Error::New(Env, "wasm file load failed").ThrowAsJavaScriptException();
-    return;
-  }
-  if (!(VM->loadWasm(InputPath))) {
-    Napi::Error::New(Env, "wasm file load failed").ThrowAsJavaScriptException();
+  if ((IMode == InputMode::File && !(VM->loadWasm(InputPath)))
+      || (IMode == InputMode::Bytecode && !(VM->loadWasm(InputBytecode)))) {
+    Napi::Error::New(Env, "Wasm bytecode/file cannot be loaded correctly.")
+      .ThrowAsJavaScriptException();
     return;
   }
 
   if (!(VM->validate())) {
-    Napi::Error::New(Env, "wasm file validate failed")
+    Napi::Error::New(Env, "Wasm bytecode/file failed at validation stage.")
       .ThrowAsJavaScriptException();
     return;
   }
 
   if (!(VM->instantiate())) {
-    Napi::Error::New(Env, "wasm file instantiate failed")
+    Napi::Error::New(Env, "Wasm bytecode/file cannot be instantiated.")
       .ThrowAsJavaScriptException();
     return;
   }
