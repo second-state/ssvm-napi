@@ -60,7 +60,7 @@ path = "src/lib.rs"
 crate-type =["cdylib"]
 
 [dependencies]
-wasm-bindgen = "0.2.50"
+wasm-bindgen = "=0.2.61"
 ```
 
 #### Write Rust code
