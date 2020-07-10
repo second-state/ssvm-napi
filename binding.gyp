@@ -2,14 +2,25 @@
   "targets": [
     {
       "target_name": "<(module_name)",
-      "cflags_cc": [ "-std=c++17" ],
+      "cflags_cc": [ "-std=c++17", "-lstdc++fs" ],
       "cflags!": [ "-fno-exceptions", "-fno-rtti" ],
       "cflags_cc!": [ "-fno-exceptions", "-fno-rtti" ],
-      "libraries": [
-      ],
+      "link_settings": {
+          "libraries": [
+              "/usr/lib/llvm-10/lib/libLLVM.so",
+              "/usr/lib/llvm-10/lib/liblldELF.a",
+              "/usr/lib/llvm-10/lib/liblldCommon.a",
+              "/usr/lib/llvm-10/lib/liblldCore.a",
+              "/usr/lib/llvm-10/lib/liblldDriver.a",
+              "/usr/lib/llvm-10/lib/liblldReaderWriter.a",
+              "/usr/lib/llvm-10/lib/liblldYAML.a",
+              "-lstdc++fs",
+          ],
+      },
       "sources": [
         "addon.cc",
         "ssvmaddon.cc",
+        "ssvm-core/lib/aot/compiler.cpp",
         "ssvm-core/lib/ast/description.cpp",
         "ssvm-core/lib/ast/expression.cpp",
         "ssvm-core/lib/ast/instruction.cpp",
@@ -38,6 +49,7 @@
         "ssvm-core/lib/loader/filemgr.cpp",
         "ssvm-core/lib/loader/ldmgr.cpp",
         "ssvm-core/lib/loader/loader.cpp",
+        "ssvm-core/lib/support/hexstr.cpp",
         "ssvm-core/lib/support/log.cpp",
         "ssvm-core/lib/validator/formchecker.cpp",
         "ssvm-core/lib/validator/validator.cpp",
@@ -49,6 +61,7 @@
         "ssvm-core/include",
         "ssvm-core/thirdparty",
         "ssvm-core/thirdparty/googletest/include",
+        "/usr/lib/llvm-10/include",
       ],
       'defines': [ 'NAPI_DISABLE_CPP_EXCEPTIONS' ],
     },
