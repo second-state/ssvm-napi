@@ -1,4 +1,4 @@
-node-pre-gyp install --fallback-to-build --update-binary
+CXX=g++-9 node-pre-gyp install --fallback-to-build --update-binary
 rm -rf ssvm
 mkdir ssvm
 cp build/Release/ssvm.node ssvm
