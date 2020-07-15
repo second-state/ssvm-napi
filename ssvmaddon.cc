@@ -1,14 +1,18 @@
 #include "ssvmaddon.h"
+#if 0
 #include "aot/compiler.h"
-#include "loader/loader.h"
-#include "support/filesystem.h"
-#include "support/log.h"
-#include "support/span.h"
 
 #include <cstdlib> // std::mkstemp
 #include <fstream> // std::ifstream, std::ofstream
 
 #include <boost/functional/hash.hpp>
+#endif
+
+#include "loader/loader.h"
+#include "support/filesystem.h"
+#include "support/log.h"
+#include "support/span.h"
+
 
 Napi::FunctionReference SSVMAddon::Constructor;
 
@@ -16,11 +20,14 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   Napi::HandleScope Scope(Env);
 
   Napi::Function Func =
-    DefineClass(Env, "VM",
-        {InstanceMethod("Run", &SSVMAddon::Run),
+    DefineClass(Env, "VM", {
+#if 0
+        InstanceMethod("Run", &SSVMAddon::Run),
+        // Disable aot, will split into another tool
         InstanceMethod("RunAot", &SSVMAddon::RunAot),
         InstanceMethod("Compile", &SSVMAddon::Compile),
         InstanceMethod("GetAotBinary", &SSVMAddon::GetAotBinary),
+#endif
         InstanceMethod("RunInt", &SSVMAddon::RunInt),
         InstanceMethod("RunString", &SSVMAddon::RunString),
         InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
@@ -63,6 +70,18 @@ inline bool hasEnvs(const Napi::Object &Options) {
   return true;
 }
 
+bool isWasm(const std::vector<uint8_t> &Bytecode) {
+  if (Bytecode[0] == 0x00 &&
+      Bytecode[1] == 0x61 &&
+      Bytecode[2] == 0x73 &&
+      Bytecode[3] == 0x6d) {
+    return true;
+  }
+  return false;
+}
+
+#if 0
+// Disable aot, will split into another tool
 std::string createTmpFile() {
   char *TmpName = strdup("/tmp/ssvmTmpCode-XXXXXX");
   mkstemp(TmpName);
@@ -75,16 +94,6 @@ std::string copyTmpFile(std::string &FilePath) {
   std::string SoName = FilePath+std::string(".so");
   std::filesystem::copy_file(FilePath, SoName);
   return SoName;
-}
-
-bool isWasm(const std::vector<uint8_t> &Bytecode) {
-  if (Bytecode[0] == 0x00 &&
-      Bytecode[1] == 0x61 &&
-      Bytecode[2] == 0x73 &&
-      Bytecode[3] == 0x6d) {
-    return true;
-  }
-  return false;
 }
 
 bool isELF(const std::vector<uint8_t> &Bytecode) {
@@ -132,6 +141,7 @@ std::string dumpToFile(const std::vector<uint8_t> &Bytecode) {
   TmpFile.close();
   return TmpFilePath;
 }
+#endif
 
 inline bool checkInputWasmFormat(const Napi::CallbackInfo &Info) {
   return Info.Length() <= 0 || (!Info[0].IsString() && !Info[0].IsTypedArray());
@@ -264,10 +274,12 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
 
       if (isWasm(InputBytecode)) {
         IMode = InputMode::WasmBytecode;
+#if 0
       } else if (isELF(InputBytecode)) {
         IMode = InputMode::ELFBytecode;
       } else if (isMachO(InputBytecode)) {
         IMode = InputMode::MachOBytecode;
+#endif
       } else {
         Napi::Error::New(Env, "Unknown bytecode format.").ThrowAsJavaScriptException();
         return;
@@ -298,6 +310,7 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   }
 }
 
+#if 0
 void SSVMAddon::Compile(const Napi::CallbackInfo &Info) {
   SSVM::Loader::Loader Loader;
   std::vector<SSVM::Byte> Data;
@@ -405,7 +418,9 @@ void SSVMAddon::RunAot(const Napi::CallbackInfo &Info) {
     return;
   }
 }
+#endif
 
+#if 0
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info) {
   // The WASI options object will have these properties:
   // {
@@ -442,6 +457,7 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info) {
     WasiMod->getEnv().init({}/* Dir name */, std::string(InputBytecode.begin(), InputBytecode.end()), ArgsVec);
   }
 }
+#endif
 
 void SSVMAddon::PrepareResourceWB(const Napi::CallbackInfo &Info,
     std::vector<SSVM::ValVariant> &Args) {
@@ -498,9 +514,11 @@ void SSVMAddon::PrepareResourceWB(const Napi::CallbackInfo &Info,
   }
 }
 
+#if 0
 void SSVMAddon::ReleaseResource() {
   ArgsVec.erase(ArgsVec.begin(), ArgsVec.end());
 }
+#endif
 
 void SSVMAddon::ReleaseResourceWB(const uint32_t Offset, const uint32_t Size) {
   std::vector<SSVM::ValVariant> Params = {Offset, Size};
@@ -513,6 +531,7 @@ void SSVMAddon::ReleaseResourceWB(const uint32_t Offset, const uint32_t Size) {
   }
 }
 
+#if 0
 Napi::Value SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   InitVM(Info);
   if (WBMode) {
@@ -539,6 +558,7 @@ Napi::Value SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   }
   return Napi::Number::New(Info.Env(), 0);
 }
+#endif
 
 void SSVMAddon::PrepareWasi(const Napi::CallbackInfo &Info, SSVM::Host::WasiModule *WasiMod, const Napi::Object &WasiOptions, const std::string &FuncName) {
   /// Handle arguments from the wasi options
