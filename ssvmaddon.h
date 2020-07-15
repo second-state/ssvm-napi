@@ -52,18 +52,21 @@ private:
   void PrepareResourceWB(const Napi::CallbackInfo &Info,
       std::vector<SSVM::ValVariant> &Args);
   void ReleaseResourceWB(const uint32_t Offset, const uint32_t Size);
-  /// Wasi related functions
-  void PrepareResource(const Napi::CallbackInfo &Info);
-  void ReleaseResource();
   /// Run functions
-  Napi::Value Run(const Napi::CallbackInfo &Info);
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
   Napi::Value RunUint8Array(const Napi::CallbackInfo &Info);
+#if 0
+  /// Wasi related functions
+  void PrepareResource(const Napi::CallbackInfo &Info);
+  void ReleaseResource();
+  Napi::Value Run(const Napi::CallbackInfo &Info);
+  /// Disable aot, it will be split into another tool
   /// Aot related functions
   void Compile(const Napi::CallbackInfo &Info);
   void RunAot(const Napi::CallbackInfo &Info);
   Napi::Value GetAotBinary(const Napi::CallbackInfo &Info);
+#endif
 };
 
 #endif
