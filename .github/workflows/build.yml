@@ -21,7 +21,7 @@ jobs:
 
     - name: Build SSVM-napi using gcc
       run: |
-        JOBS=max npm install --fallback-to-build --update-binary .
+        JOBS=max npm install --fallback-to-build --update-binary . --unsafe-perm
 
   build_test_clang:
     runs-on: ubuntu-latest
@@ -35,4 +35,4 @@ jobs:
 
     - name: Build SSVM-napi using clang
       run: |
-        JOBS=max npm install --fallback-to-build --update-binary .
+        JOBS=max npm install --fallback-to-build --update-binary . --unsafe-perm
