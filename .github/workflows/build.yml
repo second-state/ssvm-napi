@@ -1,0 +1,42 @@
+name: build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build_test_gcc:
+    runs-on: ubuntu-latest
+    container:
+      image: secondstate/ssvm:ubuntu-build-gcc
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup envs
+      run: |
+        npm install -g node-pre-gyp node-addon-api
+
+    - name: Build SSVM-napi using gcc
+      run: |
+        JOBS=max node-pre-gyp install --fallback-to-build --update-binary
+
+  build_test_clang:
+    runs-on: ubuntu-latest
+    container:
+      image: secondstate/ssvm:ubuntu-build-clang
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup envs
+      run: |
+        npm install -g node-pre-gyp node-addon-api
+
+    - name: Build SSVM-napi using clang
+      run: |
+        JOBS=max node-pre-gyp install --fallback-to-build --update-binary
