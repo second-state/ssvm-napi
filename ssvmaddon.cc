@@ -32,12 +32,32 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   return Exports;
 }
 
-namespace details {
-bool hasArgs(Napi::Object &Options) {
+namespace {
+inline bool hasArgs(const Napi::Object &Options) {
   if (!Options.Has("args")) {
     return false;
   }
-  if (!Options.Get("args").IsObject()) {
+  if (!Options.Get("args").IsArray()) {
+    return false;
+  }
+  return true;
+}
+
+inline bool hasDirs(const Napi::Object &Options) {
+  if (!Options.Has("preopens")) {
+    return false;
+  }
+  if (!Options.Get("preopens").IsObject()) {
+    return false;
+  }
+  return true;
+}
+
+inline bool hasEnvs(const Napi::Object &Options) {
+  if (!Options.Has("env")) {
+    return false;
+  }
+  if (!Options.Get("env").IsObject()) {
     return false;
   }
   return true;
@@ -112,60 +132,148 @@ std::string dumpToFile(const std::vector<uint8_t> &Bytecode) {
   TmpFile.close();
   return TmpFilePath;
 }
+
+inline bool checkInputWasmFormat(const Napi::CallbackInfo &Info) {
+  return Info.Length() <= 0 || (!Info[0].IsString() && !Info[0].IsTypedArray());
+}
+
+inline bool isWasiOptionsProvided(const Napi::CallbackInfo &Info) {
+  return Info.Length() == 2 && Info[1].IsObject();
+}
+
+inline bool isWasmBindgenDisabled(const Napi::Object &WasiOptions) {
+  return WasiOptions.Has("DisableWasmBindgen")
+    && WasiOptions.Get("DisableWasmBindgen").IsBoolean()
+    && WasiOptions.Get("DisableWasmBindgen").As<Napi::Boolean>().Value();
+}
+
+bool parseCmdArgs(std::vector<std::string> &CmdArgs, const Napi::Object &WasiOptions) {
+  if (hasArgs(WasiOptions)) {
+    Napi::Array Args = WasiOptions.Get("args").As<Napi::Array>();
+    for (uint32_t i = 0; i < Args.Length(); i++) {
+      Napi::Value Arg = Args[i];
+      if (Arg.IsNumber()) {
+        CmdArgs.push_back(std::to_string(Arg.As<Napi::Number>().Uint32Value()));
+      } else if (Arg.IsString()) {
+        CmdArgs.push_back(Arg.As<Napi::String>().Utf8Value());
+      } else if (Arg.IsTypedArray() &&
+          Arg.As<Napi::TypedArray>().TypedArrayType() ==
+          napi_uint8_array) {
+        Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
+        std::string ArrayArg = std::string(
+            static_cast<char*>(DataBuffer.Data()),
+            static_cast<char*>(DataBuffer.Data()) + DataBuffer.ByteLength());
+        CmdArgs.push_back(ArrayArg);
+      } else {
+        // TODO: support other types
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool parseDirs(std::vector<std::string> &Dirs, const Napi::Object &WasiOptions) {
+  if (hasDirs(WasiOptions)) {
+    Napi::Object Preopens = WasiOptions.Get("preopens").As<Napi::Object>();
+    Napi::Array Keys = Preopens.GetPropertyNames();
+    for (uint32_t i = 0; i < Keys.Length(); i++) {
+      // Dir format: <host_path>:<guest_path>
+      Napi::Value Key = Keys[i];
+      if (!Key.IsString()) {
+        // host path must be a string
+        return false;
+      }
+      std::string Dir = Key.As<Napi::String>().Utf8Value();
+      Dir.append(":");
+      Napi::Value Value = Preopens.Get(Key);
+      if (!Value.IsString()) {
+        // guest path must be a string
+        return false;
+      }
+      Dir.append(Value.As<Napi::String>().Utf8Value());
+      Dirs.push_back(Dir);
+    }
+  }
+  return true;
+}
+
+bool parseEnvs(std::vector<std::string> &Envs, const Napi::Object &WasiOptions) {
+  if (hasEnvs(WasiOptions)) {
+    Napi::Object Environs = WasiOptions.Get("env").As<Napi::Object>();
+    Napi::Array Keys = Environs.GetPropertyNames();
+    for (uint32_t i = 0; i < Keys.Length(); i++) {
+      // Environ format: <KEY>=<VALUE>
+      Napi::Value Key = Keys[i];
+      if (!Key.IsString()) {
+        // key must be a string
+        return false;
+      }
+      std::string Env = Key.As<Napi::String>().Utf8Value();
+      Env.append("=");
+      Napi::Value Value = Environs.Get(Key);
+      if (!Value.IsString()) {
+        // value must be a string
+        return false;
+      }
+      Env.append(Value.As<Napi::String>().Utf8Value());
+      Envs.push_back(Env);
+    }
+  }
+  return true;
+}
 } // namespace details
 
 SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
   : Napi::ObjectWrap<SSVMAddon>(Info), Configure(nullptr),
   VM(nullptr), MemInst(nullptr),
-  WasiMod(nullptr), WBMode(false), Inited(false) {
+  WasiMod(nullptr), WBMode(true), Inited(false) {
 
     Napi::Env Env = Info.Env();
     Napi::HandleScope Scope(Env);
 
-    if (Info.Length() <= 0 || (!Info[0].IsString() && !Info[0].IsTypedArray())) {
+    if (checkInputWasmFormat(Info)) {
       Napi::Error::New(Env, "Expected a Wasm file or a Wasm binary sequence.").ThrowAsJavaScriptException();
       return;
     }
-    if (Info.Length() == 1) {
-      // WasmBindgen mode
-      // Assume the WASI options object is {}
-      WBMode = true;
-    } else if (Info.Length() == 2 && Info[1].IsObject()) {
+
+    // Assume the WasmBindgen is enabled by default.
+    // Assume the WASI options object is {}
+
+    // Check if a Wasi options object is given or not
+    if (isWasiOptionsProvided(Info)) {
       // Get a WASI options object
       WasiOptions = Info[1].As<Napi::Object>();
-      if (WasiOptions.Has("DisableWasmBindgen")
-          && WasiOptions.Get("DisableWasmBindgen").IsBoolean()
-          && WasiOptions.Get("DisableWasmBindgen").As<Napi::Boolean>().Value()) {
+      if (isWasmBindgenDisabled(WasiOptions)) {
         WBMode = false;
-      } else {
-        WBMode = true;
       }
-    } else {
-      Napi::Error::New(Env, "Too many arguments for initializing SSVM-js").ThrowAsJavaScriptException();
-      return;
     }
 
+    // Handle input wasm
     if (Info[0].IsString()) {
+      // Wasm file path
       IMode = InputMode::FilePath;
       InputPath = Info[0].As<Napi::String>().Utf8Value();
     } else if (Info[0].IsTypedArray()
         && Info[0].As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array) {
+      // Wasm binary format
       Napi::ArrayBuffer DataBuffer = Info[0].As<Napi::TypedArray>().ArrayBuffer();
       InputBytecode = std::vector<uint8_t>(
           static_cast<uint8_t*>(DataBuffer.Data()),
           static_cast<uint8_t*>(DataBuffer.Data()) + DataBuffer.ByteLength());
-      if (details::isWasm(InputBytecode)) {
+
+      if (isWasm(InputBytecode)) {
         IMode = InputMode::WasmBytecode;
-      } else if (details::isELF(InputBytecode)) {
+      } else if (isELF(InputBytecode)) {
         IMode = InputMode::ELFBytecode;
-      } else if (details::isMachO(InputBytecode)) {
+      } else if (isMachO(InputBytecode)) {
         IMode = InputMode::MachOBytecode;
       } else {
         Napi::Error::New(Env, "Unknown bytecode format.").ThrowAsJavaScriptException();
         return;
       }
     } else {
-      Napi::Error::New(Env, "Wasm bytecode is not a valid Uint8Array.").ThrowAsJavaScriptException();
+      Napi::Error::New(Env, "Wasm bytecode is not a valid Uint8Array or not a valid file path.").ThrowAsJavaScriptException();
       return;
     }
   }
@@ -224,7 +332,7 @@ void SSVMAddon::Compile(const Napi::CallbackInfo &Info) {
     return;
   }
 
-  CurAotBinPath = details::createTmpFile();
+  CurAotBinPath = createTmpFile();
   SSVM::AOT::Compiler Compiler;
   if (auto Res = Compiler.compile(Data, *Module, CurAotBinPath); !Res) {
     const auto Err = static_cast<uint32_t>(Res.error());
@@ -232,7 +340,7 @@ void SSVMAddon::Compile(const Napi::CallbackInfo &Info) {
     Napi::Error::New(Info.Env(), "Compile failed.").ThrowAsJavaScriptException();
     return;
   }
-  CurAotBinPath = details::copyTmpFile(CurAotBinPath);
+  CurAotBinPath = copyTmpFile(CurAotBinPath);
   CodeCache[CodeHash] = CurAotBinPath;
 }
 
@@ -255,6 +363,7 @@ Napi::Value SSVMAddon::GetAotBinary(const Napi::CallbackInfo &Info) {
       Napi::ArrayBuffer::New(Info.Env(), Buf, BinSize);
     Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
         Info.Env(), BinSize, ResultArrayBuffer, 0, napi_uint8_array);
+    delete Buf;
     return ResultTypedArray;
   } else {
     return Info.Env().Undefined();
@@ -262,10 +371,10 @@ Napi::Value SSVMAddon::GetAotBinary(const Napi::CallbackInfo &Info) {
 }
 
 void SSVMAddon::RunAot(const Napi::CallbackInfo &Info) {
-  if (!details::isCompiled(IMode)) {
+  if (!isCompiled(IMode)) {
     Compile(Info);
   } else { /// ELF, MachO from InputBytecode
-    CurAotBinPath = details::dumpToFile(InputBytecode);
+    CurAotBinPath = dumpToFile(InputBytecode);
   }
 
 
@@ -282,34 +391,10 @@ void SSVMAddon::RunAot(const Napi::CallbackInfo &Info) {
   if (Info.Length() > 0) {
     WasiOptions = Info[0].As<Napi::Object>();
   }
-  std::vector<std::string> CmdArgsVec;
-  if (details::hasArgs(WasiOptions)) {
-    Napi::Array Args = WasiOptions.Get("args").As<Napi::Array>();
-    for (uint32_t i = 0; i < Args.Length(); i++) {
-      Napi::Value Arg = Args[i];
-      if (Arg.IsNumber()) {
-        CmdArgsVec.push_back(std::to_string(Arg.As<Napi::Number>().Uint32Value()));
-      } else if (Arg.IsString()) {
-        CmdArgsVec.push_back(Arg.As<Napi::String>().Utf8Value());
-      } else if (Arg.IsTypedArray() &&
-          Arg.As<Napi::TypedArray>().TypedArrayType() ==
-          napi_uint8_array) {
-        Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
-        std::string ArrayArg = std::string(
-            static_cast<char*>(DataBuffer.Data()),
-            static_cast<char*>(DataBuffer.Data()) + DataBuffer.ByteLength());
-        CmdArgsVec.push_back(ArrayArg);
-      } else {
-        // TODO: support other types
-        Napi::TypeError::New(Info.Env(),
-            "unsupported argument type in WASI Options")
-          .ThrowAsJavaScriptException();
-        return;
-      }
-    }
-  }
-  WasiMod->getEnv().init({}/* Dir name */, CurAotBinPath, CmdArgsVec);
+  /// Set up the wasi modules with given wasi options
+  PrepareWasi(Info, WasiMod, WasiOptions, CurAotBinPath);
 
+  /// Execute
   if (auto Result = VM.runWasmFile(CurAotBinPath, "_start")) {
     return;
   } else {
@@ -322,7 +407,6 @@ void SSVMAddon::RunAot(const Napi::CallbackInfo &Info) {
 }
 
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info) {
-  // TODO: Implement WASI options support
   // The WASI options object will have these properties:
   // {
   //   "args": [],
@@ -456,6 +540,32 @@ Napi::Value SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   return Napi::Number::New(Info.Env(), 0);
 }
 
+void SSVMAddon::PrepareWasi(const Napi::CallbackInfo &Info, SSVM::Host::WasiModule *WasiMod, const Napi::Object &WasiOptions, const std::string &FuncName) {
+  /// Handle arguments from the wasi options
+  std::vector<std::string> CmdArgs, Dirs, Envs;
+  if (!parseCmdArgs(CmdArgs, WasiOptions)) {
+    Napi::TypeError::New(Info.Env(),
+        "Parse commandline arguments from Wasi options failed.")
+      .ThrowAsJavaScriptException();
+    return;
+  }
+  if (!parseDirs(Dirs, WasiOptions)) {
+    Napi::TypeError::New(Info.Env(),
+        "Parse preopens from Wasi options failed.")
+      .ThrowAsJavaScriptException();
+    return;
+  }
+  if (!parseEnvs(Envs, WasiOptions)) {
+    Napi::TypeError::New(Info.Env(),
+        "Parse environment variables from Wasi options failed.")
+      .ThrowAsJavaScriptException();
+    return;
+  }
+
+  /// Set up the wasi modules with given wasi options
+  WasiMod->getEnv().init(Dirs, FuncName, CmdArgs, Envs);
+}
+
 Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
   InitVM(Info);
   if (!WBMode) {
@@ -467,6 +577,8 @@ Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
   if (Info.Length() > 0) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
+
+  PrepareWasi(Info, WasiMod, WasiOptions, FuncName);
 
   std::vector<SSVM::ValVariant> Args, Rets;
   PrepareResourceWB(Info, Args);
@@ -493,6 +605,8 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
   if (Info.Length() > 0) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
+
+  PrepareWasi(Info, WasiMod, WasiOptions, FuncName);
 
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
@@ -545,6 +659,8 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
+  PrepareWasi(Info, WasiMod, WasiOptions, FuncName);
+
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
   Args.emplace_back(ResultMemAddr);
@@ -590,7 +706,6 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
 }
 
 void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
-  InitVM(Info);
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
 
