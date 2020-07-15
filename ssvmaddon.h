@@ -45,6 +45,8 @@ private:
 
   /// Setup related functions
   void InitVM(const Napi::CallbackInfo &Info);
+  /// Prepare wasi module from given wasi options
+  void PrepareWasi(const Napi::CallbackInfo &Info, SSVM::Host::WasiModule *WasiMod, const Napi::Object &WasiOptions, const std::string &FuncName);
   /// WasmBindgen related functions
   void EnableWasmBindgen(const Napi::CallbackInfo &Info);
   void PrepareResourceWB(const Napi::CallbackInfo &Info,
