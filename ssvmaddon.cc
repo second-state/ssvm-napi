@@ -13,11 +13,21 @@
 #include "support/log.h"
 #include "support/span.h"
 
-
 Napi::FunctionReference SSVMAddon::Constructor;
 
 Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   Napi::HandleScope Scope(Env);
+
+#ifdef __GLIBCXX__
+  if (__GLIBCXX__ < 20200422) {
+    std::cerr << "====================================================================\n"
+      << "Error: libstdc++ version mismatched!\n"
+      << "SSVM relies on >libstdc++6.0.28 (GLIBCXX >= 3.4.28)\n"
+      << "Please upgrade the libstdc++6 library.\n\n"
+      << "For more details, refer to our environment set up document: https://www.secondstate.io/articles/setup-rust-nodejs/\n"
+      << "====================================================================\n";
+  }
+#endif
 
   Napi::Function Func =
     DefineClass(Env, "VM", {
