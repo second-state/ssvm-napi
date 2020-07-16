@@ -18,7 +18,7 @@ Users should install the dependencies by the following requirments:
 * boost >= 1.65.0
 * llvm >= 10
 * liblld-10-dev >= 10
-* GLIBCXX >= 3.4.28
+* libstdc++6 >= 6.0.28 (GLIBCXX >= 3.4.28)
 * g++ version >= 9.0 (Optional, if you have to build from source)
 
 ## Prepare environment
@@ -60,6 +60,21 @@ llvm/focal,now 1:10.0-50~exp1 amd64 [installed,automatic]
 ...omitted...
 
 # If the version is 1:10.x, then your llvm version is correct.
+```
+
+### Verify the version of libstdc++6
+
+```bash
+$ strings /usr/lib/x86_64-linux-gnu/libstdc++.so.6 | grep GLIBCXX
+...omitted...
+GLIBCXX_3.4.24
+GLIBCXX_3.4.25
+GLIBCXX_3.4.26
+GLIBCXX_3.4.27
+GLIBCXX_3.4.28
+GLIBCXX_DEBUG_MESSAGE_LENGTH
+
+# If you can find GLIBCXX_3.4.28 in the output, then your libstdc++6 version is correct.
 ```
 
 ### Works with Rust Wasm-Bindgen
