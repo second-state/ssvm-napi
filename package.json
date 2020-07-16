@@ -1,6 +1,6 @@
 {
   "name": "ssvm",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Second State WebAssembly VM for Node.js Addon",
   "keywords": [
     "wasm",
