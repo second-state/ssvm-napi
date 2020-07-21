@@ -540,7 +540,7 @@ bool SSVMAddon::parseDirs(
     Napi::Object Preopens = WasiOptions.Get("preopens").As<Napi::Object>();
     Napi::Array Keys = Preopens.GetPropertyNames();
     for (uint32_t i = 0; i < Keys.Length(); i++) {
-      // Dir format: <host_path>:<guest_path>
+      // Dir format: <guest_path>:<host_path>
       Napi::Value Key = Keys[i];
       if (!Key.IsString()) {
         // host path must be a string
