@@ -34,7 +34,7 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
     if (Pos != std::string::npos) {
       CurrentGLibVer = LibName;
       std::string GV = LibName.substr(GLibCXXName.length(), LibName.length());
-      if (std::stoi(GV) >= 29) {
+      if (std::stoi(GV) >= 28) {
         IsVersionCompatible = true;
       }
     }
