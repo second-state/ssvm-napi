@@ -93,7 +93,7 @@ Please refer to [Tutorial: A Wasm-Bindgen application](./Tutorial_Wasm_Bindgen.m
 		* `wasi_options` <JS Object>
 			* `args` <JS Array>: An array of strings that Wasm application will get as function arguments. Default: `[]`
 			* `env` <JS Object>: An object like `process.env` that Wasm application will get as its environment variables. Default: `{}`
-			* `preopens` <JS Object>: An object which maps host path to guest path. E.g. `{'/sandbox': '/some/real/path/that/wasm/can/access'}` Default: `{}`
+			* `preopens` <JS Object>: An object which maps '<guest_path>:<host_path>'. E.g. `{'/sandbox': '/some/real/path/that/wasm/can/access'}` Default: `{}`
 * Return value:
 	* `vm_instance`: A ssvm instance.
 
