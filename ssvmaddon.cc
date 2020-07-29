@@ -170,7 +170,10 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
     Napi::HandleScope Scope(Env);
 
     if (checkInputWasmFormat(Info)) {
-      Napi::Error::New(Env, "Expected a Wasm file or a Wasm binary sequence.").ThrowAsJavaScriptException();
+      napi_throw_error(
+          Env,
+          "Error",
+          "Expected a Wasm file or a Wasm binary sequence.");
       return;
     }
 
@@ -182,21 +185,24 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
       // Get a WASI options object
       Napi::Object WasiOptions = Info[1].As<Napi::Object>();
       if (!parseCmdArgs(WasiCmdArgs, WasiOptions)) {
-        Napi::Error::New(Info.Env(),
-            "Parse commandline arguments from Wasi options failed.")
-          .ThrowAsJavaScriptException();
+        napi_throw_error(
+            Env,
+            "Error",
+            "Parse commandline arguments from Wasi options failed.");
         return;
       }
       if (!parseDirs(WasiDirs, WasiOptions)) {
-        Napi::Error::New(Info.Env(),
-            "Parse preopens from Wasi options failed.")
-          .ThrowAsJavaScriptException();
+        napi_throw_error(
+            Env,
+            "Error",
+            "Parse preopens from Wasi options failed.");
         return;
       }
       if (!parseEnvs(WasiEnvs, WasiOptions)) {
-        Napi::Error::New(Info.Env(),
-            "Parse environment variables from Wasi options failed.")
-          .ThrowAsJavaScriptException();
+        napi_throw_error(
+            Env,
+            "Error",
+            "Parse environment variables from Wasi options failed.");
         return;
       }
 
@@ -227,11 +233,17 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
         IMode = InputMode::MachOBytecode;
 #endif
       } else {
-        Napi::Error::New(Env, "Unknown bytecode format.").ThrowAsJavaScriptException();
+        napi_throw_error(
+            Env,
+            "Error",
+            "Unknown bytecode format.");
         return;
       }
     } else {
-      Napi::Error::New(Env, "Wasm bytecode is not a valid Uint8Array or not a valid file path.").ThrowAsJavaScriptException();
+      napi_throw_error(
+          Env,
+          "Error",
+          "Wasm bytecode is not a valid Uint8Array or not a valid file path.");
       return;
     }
   }
@@ -439,8 +451,10 @@ void SSVMAddon::PrepareResourceWB(const Napi::CallbackInfo &Info,
       MallocSize = DataBuffer.ByteLength();
     } else {
       // TODO: support other types
-      Napi::TypeError::New(Info.Env(), "unsupported argument type")
-        .ThrowAsJavaScriptException();
+      napi_throw_error(
+          Info.Env(),
+          "Error",
+          "unsupported argument type");
       return;
     }
 
@@ -449,9 +463,10 @@ void SSVMAddon::PrepareResourceWB(const Napi::CallbackInfo &Info,
     Params.emplace_back(MallocSize);
     auto Res = VM->execute("__wbindgen_malloc", Params);
     if (!Res) {
-      std::string FatalLocation("SSVMAddon.cc::PrepareResourceWB::__wbindgen_malloc");
-      std::string FatalError("SSVM-js malloc failed: wasm-bindgen helper function <__wbindgen_malloc> not found.\n");
-      napi_fatal_error(FatalLocation.c_str(), FatalLocation.size(), FatalError.c_str(), FatalError.size());
+      std::string MallocError(
+          "SSVMAddon.cc::PrepareResourceWB::__wbindgen_malloc"
+          "SSVM-js malloc failed: wasm-bindgen helper function <__wbindgen_malloc> not found.\n");
+      napi_throw_error(Info.Env(), "Error", MallocError.c_str());
       return;
     }
     Rets = *Res;
@@ -482,13 +497,14 @@ void SSVMAddon::ReleaseResource() {
 }
 #endif
 
-void SSVMAddon::ReleaseResourceWB(const uint32_t Offset, const uint32_t Size) {
+void SSVMAddon::ReleaseResourceWB(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size) {
   std::vector<SSVM::ValVariant> Params = {Offset, Size};
   auto Res = VM->execute("__wbindgen_free", Params);
   if (!Res) {
-    std::string FatalLocation("SSVMAddon.cc::ReleaseResourceWB::__wbindgen_free");
-    std::string FatalError("SSVM-js free failed: wasm-bindgen helper function <__wbindgen_free> not found.\n");
-    napi_fatal_error(FatalLocation.c_str(), FatalLocation.size(), FatalError.c_str(), FatalError.size());
+    std::string FreeError(
+        "SSVMAddon.cc::ReleaseResourceWB::__wbindgen_free"
+        "SSVM-js free failed: wasm-bindgen helper function <__wbindgen_free> not found.\n");
+    napi_throw_error(Info.Env(), "Error", FreeError.c_str());
     return;
   }
 }
@@ -613,8 +629,7 @@ bool SSVMAddon::parseEnvs(
 Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
   InitVM(Info);
   if (!WBMode) {
-    Napi::Error::New(Info.Env(), "RunInt function only supports WasmBindgen mode")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "RunInt function only supports WasmBindgen mode");
     return Napi::Value();
   }
   std::string FuncName = "";
@@ -632,8 +647,7 @@ Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
     Rets = *Res;
     return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
   } else {
-    Napi::Error::New(Info.Env(), "SSVM execution failed")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
     return Napi::Value();
   }
 }
@@ -641,8 +655,7 @@ Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
 Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
   InitVM(Info);
   if (!WBMode) {
-    Napi::Error::New(Info.Env(), "RunString function only supports WasmBindgen mode")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "RunString function only supports WasmBindgen mode");
     return Napi::Value();
   }
   std::string FuncName = "";
@@ -658,8 +671,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
   PrepareResourceWB(Info, Args);
   auto Res = VM->execute(FuncName, Args);
   if (!Res) {
-    Napi::Error::New(Info.Env(), "SSVM execution failed")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
     return Napi::Value();
   }
   Rets = *Res;
@@ -672,18 +684,14 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
     ResultDataLen = (*ResultMem)[4] | ((*ResultMem)[5] << 8) |
       ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
   } else {
-    Napi::Error::New(Info.Env(),
-        "Access to forbidden memory address when retrieving address and length of result data")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "Access to forbidden memory address when retrieving address and length of result data");
     return Napi::Value();
   }
   if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
-    ReleaseResourceWB(ResultDataAddr, ResultDataLen);
+    ReleaseResourceWB(Info, ResultDataAddr, ResultDataLen);
   } else {
-    Napi::Error::New(Info.Env(),
-        "Access to forbidden memory address when retrieving result data")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "Access to forbidden memory address when retrieving result data");
     return Napi::Value();
   }
 
@@ -694,8 +702,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
 Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
   InitVM(Info);
   if (!WBMode) {
-    Napi::Error::New(Info.Env(), "RunUin8Array function only supports WasmBindgen mode")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "RunUin8Array function only supports WasmBindgen mode");
     return Napi::Value();
   }
   std::string FuncName = "";
@@ -711,8 +718,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
   PrepareResourceWB(Info, Args);
   auto Res = VM->execute(FuncName, Args);
   if (!Res) {
-    Napi::Error::New(Info.Env(), "SSVM execution failed")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
     return Napi::Value();
   }
   Rets = *Res;
@@ -726,19 +732,15 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     ResultDataLen = (*ResultMem)[4] | ((*ResultMem)[5] << 8) |
       ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
   } else {
-    Napi::Error::New(Info.Env(),
-        "Access to forbidden memory address when retrieving address and length of result data")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "Access to forbidden memory address when retrieving address and length of result data");
     return Napi::Value();
   }
   /// Get result data
   if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
-    ReleaseResourceWB(ResultDataAddr, ResultDataLen);
+    ReleaseResourceWB(Info, ResultDataAddr, ResultDataLen);
   } else {
-    Napi::Error::New(Info.Env(),
-        "Access to forbidden memory address when retrieving result data")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "Access to forbidden memory address when retrieving result data");
     return Napi::Value();
   }
 
@@ -755,20 +757,17 @@ void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
 
   if ((IMode == InputMode::FilePath && !(VM->loadWasm(InputPath)))
       || (IMode == InputMode::WasmBytecode && !(VM->loadWasm(InputBytecode)))) {
-    Napi::Error::New(Env, "Wasm bytecode/file cannot be loaded correctly.")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
     return;
   }
 
   if (!(VM->validate())) {
-    Napi::Error::New(Env, "Wasm bytecode/file failed at validation stage.")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file failed at validation stage.");
     return;
   }
 
   if (!(VM->instantiate())) {
-    Napi::Error::New(Env, "Wasm bytecode/file cannot be instantiated.")
-      .ThrowAsJavaScriptException();
+    napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be instantiated.");
     return;
   }
 

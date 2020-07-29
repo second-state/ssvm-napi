@@ -55,7 +55,7 @@ private:
   void EnableWasmBindgen(const Napi::CallbackInfo &Info);
   void PrepareResourceWB(const Napi::CallbackInfo &Info,
       std::vector<SSVM::ValVariant> &Args);
-  void ReleaseResourceWB(const uint32_t Offset, const uint32_t Size);
+  void ReleaseResourceWB(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size);
   /// Run functions
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
