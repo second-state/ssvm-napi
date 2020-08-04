@@ -52,6 +52,7 @@ private:
       std::vector<SSVM::ValVariant> &Args);
   void ReleaseResource(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size);
   /// Run functions
+  void Run(const Napi::CallbackInfo &Info);
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
   Napi::Value RunUint8Array(const Napi::CallbackInfo &Info);
