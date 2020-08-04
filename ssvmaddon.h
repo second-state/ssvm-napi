@@ -34,6 +34,7 @@ private:
   SSVM::Statistics::Statistics Stat;
   SSVM::Host::WasiModule *WasiMod;
   bool Inited;
+  bool EnableWasiStart;
   InputMode IMode;
   std::string InputPath;
   std::vector<uint8_t> InputBytecode;
@@ -43,6 +44,7 @@ private:
   /// Setup related functions
   void InitVM(const Napi::CallbackInfo &Info);
   /// Prepare wasi module from given wasi options
+  bool parseWasiStartFlag(const Napi::Object &Options);
   bool parseCmdArgs(std::vector<std::string> &CmdArgs, const Napi::Object &Options);
   bool parseDirs(std::vector<std::string> &Dirs, const Napi::Object &Options);
   bool parseEnvs(std::vector<std::string> &Envs, const Napi::Object &Options);
@@ -56,6 +58,7 @@ private:
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
   Napi::Value RunUint8Array(const Napi::CallbackInfo &Info);
+  Napi::Value Start(const Napi::CallbackInfo &Info);
   /// Statistics
   Napi::Value GetStatistics(const Napi::CallbackInfo &Info);
 };

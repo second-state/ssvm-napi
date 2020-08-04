@@ -6,7 +6,7 @@ The [Second State VM (SSVM)](https://github.com/second-state/ssvm) is a high-per
 
 SSVM Node.js Addon is in active development.
 
-In the current stage, our prebuilt version **only supports** x86\_64 Linux.
+In the current stage, our prebuilt version **only supports** x86\_64 and aarch64 Linux.
 Or you could use `--build-from-source` flag to build from source during addon installation.
 
 ## Requirements
@@ -77,9 +77,13 @@ GLIBCXX_DEBUG_MESSAGE_LENGTH
 # If you can find GLIBCXX_3.4.28 in the output, then your libstdc++6 version is correct.
 ```
 
-### Works with Rust Wasm-Bindgen
+### Works with Rust library using Wasm-Bindgen
 
 Please refer to [Tutorial: A Wasm-Bindgen application](./Tutorial_Wasm_Bindgen.md).
+
+### Works with Rust application using standalone wasm32-wasi backend
+
+Please refer to [Tutorial: A standalone wasm32-wasi application](./Tutorial_Wasm32_Wasi.md).
 
 ## APIs
 
@@ -94,10 +98,30 @@ Please refer to [Tutorial: A Wasm-Bindgen application](./Tutorial_Wasm_Bindgen.m
 			* `args` <JS Array>: An array of strings that Wasm application will get as function arguments. Default: `[]`
 			* `env` <JS Object>: An object like `process.env` that Wasm application will get as its environment variables. Default: `{}`
 			* `preopens` <JS Object>: An object which maps '<guest_path>:<host_path>'. E.g. `{'/sandbox': '/some/real/path/that/wasm/can/access'}` Default: `{}`
+	* `EnableWasiStartFunction`: This option will disable wasm-bindgen mode and prepare the working environment for standalone wasm program. If you want to run an appliation with `main()`, you should set this to `true`. Default: `false`.
 * Return value:
 	* `vm_instance`: A ssvm instance.
 
 ### Methods
+
+#### `Start() -> Integer`
+* Emit `_start()` and expect the return value type is `Integer` which represents the error code from `main()`.
+* Arguments:
+	* If you want to append arguments for the standalone wasm program, please set the `args` in `wasi options`.
+* Example:
+```javascript
+let error_code = Start();
+```
+
+#### `Run(function_name, args...) -> void`
+* Emit `function_name` with `args` and expect the return value type is `void`.
+* Arguments:
+	* `function_name` <String>: The function name which users want to emit.
+	* `args` <Integer/String/Uint8Array>\*: The function arguments. The delimiter is `,`
+* Example:
+```javascript
+Run("Print", 1234);
+```
 
 #### `RunInt(function_name, args...) -> Integer`
 * Emit `function_name` with `args` and expect the return value type is `Integer`.
