@@ -2,7 +2,7 @@
   "targets": [
     {
       "target_name": "<(module_name)",
-      "cflags_cc": [ "-std=c++17", "-lstdc++fs" ],
+      "cflags_cc": [ "-std=c++17" ],
       "cflags!": [ "-fno-exceptions", "-fno-rtti" ],
       "cflags_cc!": [ "-fno-exceptions", "-fno-rtti" ],
       "link_settings": {
@@ -14,7 +14,6 @@
               # "/usr/lib/llvm-10/lib/liblldDriver.a",
               # "/usr/lib/llvm-10/lib/liblldReaderWriter.a",
               # "/usr/lib/llvm-10/lib/liblldYAML.a",
-              "-lstdc++fs",
           ],
       },
       "sources": [
@@ -61,7 +60,7 @@
         "ssvm-core/include",
         "ssvm-core/thirdparty",
         "ssvm-core/thirdparty/googletest/include",
-        "/usr/lib/llvm-10/include",
+        # "/usr/lib/llvm-10/include",
       ],
       'defines': [ 'NAPI_DISABLE_CPP_EXCEPTIONS' ],
     },
