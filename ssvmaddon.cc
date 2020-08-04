@@ -45,6 +45,7 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   Napi::Function Func =
     DefineClass(Env, "VM", {
         InstanceMethod("GetStatistics", &SSVMAddon::GetStatistics),
+        InstanceMethod("Run", &SSVMAddon::Run),
         InstanceMethod("RunInt", &SSVMAddon::RunInt),
         InstanceMethod("RunString", &SSVMAddon::RunString),
         InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
@@ -327,6 +328,24 @@ bool SSVMAddon::parseEnvs(
     }
   }
   return true;
+}
+
+void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
+  InitVM(Info);
+  std::string FuncName = "";
+  if (Info.Length() > 0) {
+    FuncName = Info[0].As<Napi::String>().Utf8Value();
+  }
+
+  WasiMod->getEnv().init(WasiDirs, FuncName, WasiCmdArgs, WasiEnvs);
+
+  std::vector<SSVM::ValVariant> Args, Rets;
+  PrepareResource(Info, Args);
+  auto Res = VM->execute(FuncName, Args);
+
+  if (!Res) {
+    napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
+  }
 }
 
 Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
