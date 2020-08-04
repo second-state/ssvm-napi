@@ -22,7 +22,7 @@
     "package_name": "{module_name}-{platform}-{arch}.tar.gz"
   },
   "dependencies": {
-    "node-addon-api": "^1.7.1",
+    "node-addon-api": "^3.0.0",
     "node-pre-gyp": "^0.14.0",
     "npm": "^6.14.5"
   },
