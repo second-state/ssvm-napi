@@ -360,6 +360,7 @@ Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
       .ThrowAsJavaScriptException();
     return Napi::Value();
   }
+  WasiMod->getEnv().fini();
   return Napi::Number::New(Info.Env(), 0);
 }
 
@@ -379,6 +380,8 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   if (!Res) {
     napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
   }
+
+  WasiMod->getEnv().fini();
 }
 
 Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
@@ -396,6 +399,7 @@ Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
 
   if (Res) {
     Rets = *Res;
+    WasiMod->getEnv().fini();
     return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
   } else {
     napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
@@ -443,6 +447,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
   }
 
   std::string ResultString(ResultData.begin(), ResultData.end());
+  WasiMod->getEnv().fini();
   return Napi::String::New(Info.Env(), ResultString);
 }
 
@@ -491,6 +496,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     Napi::ArrayBuffer::New(Info.Env(), &(ResultData[0]), ResultDataLen);
   Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
       Info.Env(), ResultDataLen, ResultArrayBuffer, 0, napi_uint8_array);
+  WasiMod->getEnv().fini();
   return ResultTypedArray;
 }
 
