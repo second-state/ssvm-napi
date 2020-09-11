@@ -27,6 +27,8 @@
         "ssvm-core/lib/ast/section.cpp",
         "ssvm-core/lib/ast/segment.cpp",
         "ssvm-core/lib/ast/type.cpp",
+        "ssvm-core/lib/host/ssvm_process/processfunc.cpp",
+        "ssvm-core/lib/host/ssvm_process/processmodule.cpp",
         "ssvm-core/lib/host/wasi/wasienv.cpp",
         "ssvm-core/lib/host/wasi/wasifunc.cpp",
         "ssvm-core/lib/host/wasi/wasimodule.cpp",
