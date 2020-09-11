@@ -164,6 +164,7 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
 
   Configure = new SSVM::VM::Configure();
   Configure->addVMType(SSVM::VM::Configure::VMType::Wasi);
+  Configure->addVMType(SSVM::VM::Configure::VMType::SSVM_Process);
   VM = new SSVM::VM::VM(*Configure);
 
   SSVM::Log::setErrorLoggingLevel();
