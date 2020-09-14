@@ -48,6 +48,9 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
         InstanceMethod("Start", &SSVMAddon::Start),
         InstanceMethod("Run", &SSVMAddon::Run),
         InstanceMethod("RunInt", &SSVMAddon::RunInt),
+        InstanceMethod("RunUInt", &SSVMAddon::RunUInt),
+        InstanceMethod("RunInt64", &SSVMAddon::RunInt64),
+        InstanceMethod("RunUInt64", &SSVMAddon::RunUInt64),
         InstanceMethod("RunString", &SSVMAddon::RunString),
         InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
 
@@ -386,6 +389,7 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
 }
 
 Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
+  // FIXME: this takes all args as uint32
   InitVM(Info);
   std::string FuncName = "";
   if (Info.Length() > 0) {
@@ -406,6 +410,21 @@ Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
     napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
     return Napi::Value();
   }
+}
+
+Napi::Value SSVMAddon::RunUInt(const Napi::CallbackInfo &Info) {
+  // FIXME: temporary implementation for compatibility
+  return RunInt(Info);
+}
+
+Napi::Value SSVMAddon::RunInt64(const Napi::CallbackInfo &Info) {
+  napi_throw_error(Info.Env(), "Error", "RunInt64 not implemented");
+  return Napi::Value();
+}
+
+Napi::Value SSVMAddon::RunUInt64(const Napi::CallbackInfo &Info) {
+  napi_throw_error(Info.Env(), "Error", "RunUInt64 not implemented");
+  return Napi::Value();
 }
 
 Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
