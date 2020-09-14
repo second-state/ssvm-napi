@@ -56,6 +56,9 @@ private:
   /// Run functions
   void Run(const Napi::CallbackInfo &Info);
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
+  Napi::Value RunUInt(const Napi::CallbackInfo &Info);
+  Napi::Value RunInt64(const Napi::CallbackInfo &Info);
+  Napi::Value RunUInt64(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
   Napi::Value RunUint8Array(const Napi::CallbackInfo &Info);
   Napi::Value Start(const Napi::CallbackInfo &Info);
