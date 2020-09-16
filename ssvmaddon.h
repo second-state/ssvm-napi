@@ -26,6 +26,14 @@ public:
     MachOBytecode
   };
 
+  enum class IntKind {
+    NonInt,
+    SInt32,
+    UInt32,
+    SInt64,
+    UInt64
+  };
+
 private:
   static Napi::FunctionReference Constructor;
   SSVM::VM::Configure *Configure;
@@ -51,10 +59,13 @@ private:
   /// WasmBindgen related functions
   void EnableWasmBindgen(const Napi::CallbackInfo &Info);
   void PrepareResource(const Napi::CallbackInfo &Info,
+      std::vector<SSVM::ValVariant> &Args, IntKind IntT);
+  void PrepareResource(const Napi::CallbackInfo &Info,
       std::vector<SSVM::ValVariant> &Args);
   void ReleaseResource(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size);
   /// Run functions
   void Run(const Napi::CallbackInfo &Info);
+  Napi::Value RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT);
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunUInt(const Napi::CallbackInfo &Info);
   Napi::Value RunInt64(const Napi::CallbackInfo &Info);

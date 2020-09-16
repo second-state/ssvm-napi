@@ -5,6 +5,8 @@
 #include "support/log.h"
 #include "support/span.h"
 
+#include <limits>
+
 Napi::FunctionReference SSVMAddon::Constructor;
 
 Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
@@ -78,6 +80,19 @@ inline bool checkInputWasmFormat(const Napi::CallbackInfo &Info) {
 
 inline bool isWasiOptionsProvided(const Napi::CallbackInfo &Info) {
   return Info.Length() == 2 && Info[1].IsObject();
+}
+
+inline uint32_t castFromU64ToU32(uint64_t V) {
+  return static_cast<uint32_t>(
+    V & static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
+}
+
+inline uint32_t castFromBytesToU32(const SSVM::Span<SSVM::Byte>& Bytes, int Idx) {
+  return Bytes[Idx] | (Bytes[Idx + 1] << 8) | (Bytes[Idx + 2] << 16) | (Bytes[Idx + 3] << 24);
+}
+
+inline uint64_t castFromU32ToU64(uint32_t L, uint32_t H) {
+  return static_cast<uint64_t>(L) | (static_cast<uint64_t>(H) << 32);
 }
 } // namespace details
 
@@ -181,12 +196,32 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
 }
 
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
-    std::vector<SSVM::ValVariant> &Args) {
+    std::vector<SSVM::ValVariant> &Args, IntKind IntT) {
   for (std::size_t I = 1; I < Info.Length(); I++) {
     Napi::Value Arg = Info[I];
     uint32_t MallocSize = 0, MallocAddr = 0;
     if (Arg.IsNumber()) {
-      Args.emplace_back(Arg.As<Napi::Number>().Uint32Value());
+      switch (IntT) {
+      case IntKind::SInt32:
+      case IntKind::UInt32:
+        Args.emplace_back(Arg.As<Napi::Number>().Uint32Value());
+        break;
+      case IntKind::SInt64:
+      case IntKind::UInt64: {
+        if (Args.size() == 0) {
+          // Set memory offset for return value
+          Args.emplace_back<uint32_t>(0);
+        }
+        uint64_t V = static_cast<uint64_t>(Arg.As<Napi::Number>().Int64Value());
+        Args.emplace_back(castFromU64ToU32(V));
+        Args.emplace_back(castFromU64ToU32(V >> 32));
+        break;
+      }
+      case IntKind::NonInt:
+      default:
+        napi_throw_error(Info.Env(), "Error", "SSVM-Napi implementation error: unknown integer type");
+        return;
+      }
       continue;
     } else if (Arg.IsString()) {
       std::string StrArg = Arg.As<Napi::String>().Utf8Value();
@@ -236,6 +271,11 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
       MemInst->setArray(Data, MallocAddr, DataBuffer.ByteLength());
     }
   }
+}
+
+void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
+    std::vector<SSVM::ValVariant> &Args) {
+  PrepareResource(Info, Args, IntKind::NonInt);
 }
 
 void SSVMAddon::ReleaseResource(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size) {
@@ -388,8 +428,7 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   WasiMod->getEnv().fini();
 }
 
-Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
-  // FIXME: this takes all args as uint32
+Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT) {
   InitVM(Info);
   std::string FuncName = "";
   if (Info.Length() > 0) {
@@ -399,32 +438,47 @@ Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
   WasiMod->getEnv().init(WasiDirs, FuncName, WasiCmdArgs, WasiEnvs);
 
   std::vector<SSVM::ValVariant> Args, Rets;
-  PrepareResource(Info, Args);
+  PrepareResource(Info, Args, IntT);
   auto Res = VM->execute(FuncName, Args);
 
   if (Res) {
     Rets = *Res;
     WasiMod->getEnv().fini();
-    return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
+    switch (IntT) {
+      case IntKind::SInt32:
+      case IntKind::UInt32:
+        return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
+      case IntKind::SInt64:
+      case IntKind::UInt64:
+        if (auto ResMem = MemInst->getBytes(0, 8)) {
+          uint32_t L = castFromBytesToU32(*ResMem, 0);
+          uint32_t H = castFromBytesToU32(*ResMem, 4);
+          return Napi::Number::New(Info.Env(), castFromU32ToU64(L, H));
+        }
+      case IntKind::NonInt:
+      default:
+        napi_throw_error(Info.Env(), "Error", "SSVM-Napi implementation error: unknown integer type");
+        return Napi::Value();
+    }
   } else {
     napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
     return Napi::Value();
   }
 }
+Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
+  return RunIntImpl(Info, IntKind::SInt32);
+}
 
 Napi::Value SSVMAddon::RunUInt(const Napi::CallbackInfo &Info) {
-  // FIXME: temporary implementation for compatibility
-  return RunInt(Info);
+  return RunIntImpl(Info, IntKind::UInt32);
 }
 
 Napi::Value SSVMAddon::RunInt64(const Napi::CallbackInfo &Info) {
-  napi_throw_error(Info.Env(), "Error", "RunInt64 not implemented");
-  return Napi::Value();
+  return RunIntImpl(Info, IntKind::SInt64);
 }
 
 Napi::Value SSVMAddon::RunUInt64(const Napi::CallbackInfo &Info) {
-  napi_throw_error(Info.Env(), "Error", "RunUInt64 not implemented");
-  return Napi::Value();
+  return RunIntImpl(Info, IntKind::UInt64);
 }
 
 Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
