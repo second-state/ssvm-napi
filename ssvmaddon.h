@@ -43,6 +43,7 @@ private:
   SSVM::Host::WasiModule *WasiMod;
   bool Inited;
   bool EnableWasiStart;
+  bool EnableAOT;
   InputMode IMode;
   std::string InputPath;
   std::vector<uint8_t> InputBytecode;
@@ -53,6 +54,7 @@ private:
   void InitVM(const Napi::CallbackInfo &Info);
   /// Prepare wasi module from given wasi options
   bool parseWasiStartFlag(const Napi::Object &Options);
+  bool parseAOTConfig(const Napi::Object &Options);
   bool parseCmdArgs(std::vector<std::string> &CmdArgs, const Napi::Object &Options);
   bool parseDirs(std::vector<std::string> &Dirs, const Napi::Object &Options);
   bool parseEnvs(std::vector<std::string> &Envs, const Napi::Object &Options);

@@ -1,11 +1,16 @@
 #include "ssvmaddon.h"
 
+#include "aot/compiler.h"
 #include "loader/loader.h"
 #include "support/filesystem.h"
 #include "support/log.h"
 #include "support/span.h"
 
 #include <limits>
+#include <cstdlib> // std::mkstemp
+#include <fstream> // std::ifstream, std::ofstream
+
+#include <boost/functional/hash.hpp>
 
 Napi::FunctionReference SSVMAddon::Constructor;
 
@@ -48,6 +53,8 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
     DefineClass(Env, "VM", {
         InstanceMethod("GetStatistics", &SSVMAddon::GetStatistics),
         InstanceMethod("Start", &SSVMAddon::Start),
+        InstanceMethod("Compile", &SSVMAddon::Compile),
+        InstanceMethod("GetNativeBinary", &SSVMAddon::GetNativeBinary),
         InstanceMethod("Run", &SSVMAddon::Run),
         InstanceMethod("RunInt", &SSVMAddon::RunInt),
         InstanceMethod("RunUInt", &SSVMAddon::RunUInt),
@@ -94,12 +101,74 @@ inline uint32_t castFromBytesToU32(const SSVM::Span<SSVM::Byte>& Bytes, int Idx)
 inline uint64_t castFromU32ToU64(uint32_t L, uint32_t H) {
   return static_cast<uint64_t>(L) | (static_cast<uint64_t>(H) << 32);
 }
+
+std::string createTmpFile() {
+  char *TmpName = strdup("/tmp/ssvmTmpCode-XXXXXX");
+  mkstemp(TmpName);
+  std::ofstream f(TmpName);
+  f.close();
+  return std::string(TmpName);
+}
+
+std::string copyTmpFile(std::string &FilePath) {
+  std::string SoName = FilePath+std::string(".so");
+  std::filesystem::copy_file(FilePath, SoName);
+  return SoName;
+}
+
+bool isELF(const std::vector<uint8_t> &Bytecode) {
+  if (Bytecode[0] == 0x7f &&
+      Bytecode[1] == 0x45 &&
+      Bytecode[2] == 0x4c &&
+      Bytecode[3] == 0x46) {
+    return true;
+  }
+  return false;
+}
+
+bool isMachO(const std::vector<uint8_t> &Bytecode) {
+  if ((Bytecode[0] == 0xfe && // Mach-O 32 bit
+        Bytecode[1] == 0xed &&
+        Bytecode[2] == 0xfa &&
+        Bytecode[3] == 0xce) ||
+      (Bytecode[0] == 0xfe && // Mach-O 64 bit
+        Bytecode[1] == 0xed &&
+        Bytecode[2] == 0xfa &&
+        Bytecode[3] == 0xcf) ||
+      (Bytecode[0] == 0xca && // Mach-O Universal
+        Bytecode[1] == 0xfe &&
+        Bytecode[2] == 0xba &&
+        Bytecode[3] == 0xbe)) {
+    return true;
+  }
+  return false;
+}
+
+bool isCompiled(const SSVMAddon::InputMode &IMode) {
+  if (IMode == SSVMAddon::InputMode::MachOBytecode ||
+      IMode == SSVMAddon::InputMode::ELFBytecode) {
+    return true;
+  }
+  return false;
+}
+
+std::string dumpToFile(const std::vector<uint8_t> &Bytecode) {
+  std::string TmpFilePath = createTmpFile();
+  TmpFilePath.append(".so");
+  std::ofstream TmpFile(TmpFilePath);
+  std::ostream_iterator<uint8_t> OutIter(TmpFile);
+  std::copy(Bytecode.begin(), Bytecode.end(), OutIter);
+  TmpFile.close();
+  return TmpFilePath;
+}
+
 } // namespace details
 
 SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
   : Napi::ObjectWrap<SSVMAddon>(Info), Configure(nullptr),
   VM(nullptr), MemInst(nullptr),
-  WasiMod(nullptr), Inited(false), EnableWasiStart(false) {
+  WasiMod(nullptr), Inited(false),
+  EnableWasiStart(false), EnableAOT(false) {
 
     Napi::Env Env = Info.Env();
     Napi::HandleScope Scope(Env);
@@ -158,6 +227,10 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
 
       if (isWasm(InputBytecode)) {
         IMode = InputMode::WasmBytecode;
+      } else if (isELF(InputBytecode)) {
+        IMode = InputMode::ELFBytecode;
+      } else if (isMachO(InputBytecode)) {
+        IMode = InputMode::MachOBytecode;
       } else {
         napi_throw_error(
             Env,
@@ -192,6 +265,130 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
 
   if (!EnableWasiStart) {
     EnableWasmBindgen(Info);
+  }
+}
+
+void SSVMAddon::Compile(const Napi::CallbackInfo &Info) {
+  SSVM::Loader::Loader Loader;
+  std::vector<SSVM::Byte> Data;
+
+  if (IMode == InputMode::FilePath) {
+    /// File mode
+    /// We have to load bytecode from given file.
+    std::filesystem::path P = std::filesystem::absolute(std::filesystem::path(InputPath));
+    if (auto Res = Loader.loadFile(P.string())) {
+      Data = std::move(*Res);
+    } else {
+      const auto Err = static_cast<uint32_t>(Res.error());
+      Napi::Error::New(Info.Env(), "Load file failed.").ThrowAsJavaScriptException();
+      return;
+    }
+  }
+
+  /// Check hash.
+  std::size_t CodeHash = boost::hash_range(Data.begin(), Data.end());
+  if (CodeCache.find(CodeHash) != CodeCache.end()) {
+    return;
+  }
+
+  std::unique_ptr<SSVM::AST::Module> Module;
+  if (auto Res = Loader.parseModule(Data)) {
+    Module = std::move(*Res);
+  } else {
+    const auto Err = static_cast<uint32_t>(Res.error());
+    Napi::Error::New(Info.Env(), "Parse module failed.").ThrowAsJavaScriptException();
+    return;
+  }
+
+  CurBinPath = createTmpFile();
+  SSVM::AOT::Compiler Compiler;
+  if (auto Res = Compiler.compile(Data, *Module, CurBinPath); !Res) {
+    const auto Err = static_cast<uint32_t>(Res.error());
+    Napi::Error::New(Info.Env(), "Compile failed.").ThrowAsJavaScriptException();
+    return;
+  }
+  CurBinPath = copyTmpFile(CurBinPath);
+  CodeCache[CodeHash] = CurBinPath;
+}
+
+Napi::Value SSVMAddon::GetNativeBinary(const Napi::CallbackInfo &Info) {
+  std::ifstream NativeBinary(CurBinPath, std::ifstream::binary);
+  if (NativeBinary) {
+    /// Determine file size
+    NativeBinary.seekg(0, NativeBinary.end);
+    std::size_t BinSize = NativeBinary.tellg();
+    NativeBinary.seekg(0, NativeBinary.beg);
+
+    /// Allocate buffer memory
+    char *Buf = new char [BinSize];
+
+    /// Get file content and close file
+    NativeBinary.read(Buf, BinSize);
+    NativeBinary.close();
+
+    Napi::ArrayBuffer ResultArrayBuffer =
+      Napi::ArrayBuffer::New(Info.Env(), Buf, BinSize);
+    Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
+        Info.Env(), BinSize, ResultArrayBuffer, 0, napi_uint8_array);
+    delete Buf;
+    return ResultTypedArray;
+  } else {
+    return Info.Env().Undefined();
+  }
+}
+
+void SSVMAddon::RunAot(const Napi::CallbackInfo &Info) {
+  if (!isCompiled(IMode)) {
+    Compile(Info);
+  } else { /// ELF, MachO from InputBytecode
+    CurAotBinPath = dumpToFile(InputBytecode);
+  }
+
+
+  SSVM::VM::Configure Conf;
+  Conf.addVMType(SSVM::VM::Configure::VMType::Wasi);
+  SSVM::VM::VM VM(Conf);
+
+  SSVM::Log::setErrorLoggingLevel();
+
+  SSVM::Host::WasiModule *WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
+      VM.getImportModule(SSVM::VM::Configure::VMType::Wasi));
+
+  /// Handle arguments from the wasi options
+  if (Info.Length() > 0) {
+    Napi::Object WasiOptions = Info[0].As<Napi::Object>();
+    if (!parseCmdArgs(WasiCmdArgs, WasiOptions)) {
+      Napi::Error::New(Info.Env(),
+          "Parse commandline arguments from Wasi options failed.")
+        .ThrowAsJavaScriptException();
+      return;
+    }
+    if (!parseDirs(WasiDirs, WasiOptions)) {
+      Napi::Error::New(Info.Env(),
+          "Parse preopens from Wasi options failed.")
+        .ThrowAsJavaScriptException();
+      return;
+    }
+    if (!parseEnvs(WasiEnvs, WasiOptions)) {
+      Napi::Error::New(Info.Env(),
+          "Parse environment variables from Wasi options failed.")
+        .ThrowAsJavaScriptException();
+      return;
+    }
+  }
+
+  /// Set up the wasi modules with given wasi options
+  WasiMod->getEnv().init(WasiDirs, FuncName, WasiCmdArgs, WasiEnvs);
+
+  /// Execute
+  if (auto Result = VM.runWasmFile(CurAotBinPath, "_start")) {
+    return;
+  } else {
+    std::cerr << "Failed. Error code : "
+              << static_cast<uint32_t>(Result.error()) << '\n';
+    Napi::TypeError::New(Info.Env(), "Execution failed.")
+      .ThrowAsJavaScriptException();
+    return;
   }
 }
 
@@ -384,6 +581,14 @@ bool SSVMAddon::parseEnvs(
     }
   }
   return true;
+}
+
+bool SSVMAddon::parseAOTConfig(const Napi::Object &WasiOptions) {
+  if (WasiOptions.Has("EnableAOT")
+      && WasiOptions.Get("EnableAOT").IsBoolean()) {
+    return WasiOptions.Get("EnableAOT").As<Napi::Boolean>().Value();
+  }
+  return false;
 }
 
 Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
