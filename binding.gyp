@@ -18,6 +18,7 @@
       },
       "sources": [
         "addon.cc",
+        "utils.cc",
         "ssvmaddon.cc",
         "ssvm-core/lib/aot/compiler.cpp",
         "ssvm-core/lib/ast/description.cpp",

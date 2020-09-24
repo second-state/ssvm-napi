@@ -5,6 +5,7 @@
 #include "support/filesystem.h"
 #include "support/log.h"
 #include "support/span.h"
+#include "utils.h"
 
 #include <limits>
 #include <cstdlib> // std::mkstemp
@@ -17,44 +18,12 @@ Napi::FunctionReference SSVMAddon::Constructor;
 Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   Napi::HandleScope Scope(Env);
 
-#ifdef __GLIBCXX__
-#ifdef __aarch64__
-  std::string GLibPath = "/usr/lib/aarch64-linux-gnu";
-#endif
-#ifdef __x86_64__
-  std::string GLibPath = "/usr/lib/x86_64-linux-gnu";
-#endif
-  std::string GLibCXXName = "libstdc++.so.6.0.";
-  std::string CurrentGLibVer = "unknown";
-  bool IsVersionCompatible = false;
-  for (const auto & Entry : std::filesystem::directory_iterator(GLibPath)) {
-    std::string LibName = Entry.path().filename().string();
-    size_t Pos = LibName.find(GLibCXXName);
-    if (Pos != std::string::npos) {
-      CurrentGLibVer = LibName;
-      std::string GV = LibName.substr(GLibCXXName.length(), LibName.length());
-      if (std::stoi(GV) >= 28) {
-        IsVersionCompatible = true;
-      }
-    }
-  }
-  if (!IsVersionCompatible) {
-    std::cerr << "====================================================================\n"
-      << "Error: libstdc++ version mismatched!\n"
-      << "Your current version is " << CurrentGLibVer << " which is less than libstdc++6.0.28\n"
-      << "SSVM relies on >=libstdc++6.0.28 (GLIBCXX >= 3.4.28)\n"
-      << "Please upgrade the libstdc++6 library.\n\n"
-      << "For more details, refer to our environment set up document: https://www.secondstate.io/articles/setup-rust-nodejs/\n"
-      << "====================================================================\n";
-  }
-#endif
+  SSVM::NAPI::checkLibCXXVersion();
 
   Napi::Function Func =
     DefineClass(Env, "VM", {
         InstanceMethod("GetStatistics", &SSVMAddon::GetStatistics),
         InstanceMethod("Start", &SSVMAddon::Start),
-        InstanceMethod("Compile", &SSVMAddon::Compile),
-        InstanceMethod("GetNativeBinary", &SSVMAddon::GetNativeBinary),
         InstanceMethod("Run", &SSVMAddon::Run),
         InstanceMethod("RunInt", &SSVMAddon::RunInt),
         InstanceMethod("RunUInt", &SSVMAddon::RunUInt),
@@ -268,6 +237,7 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   }
 }
 
+/*
 void SSVMAddon::Compile(const Napi::CallbackInfo &Info) {
   SSVM::Loader::Loader Loader;
   std::vector<SSVM::Byte> Data;
@@ -310,7 +280,9 @@ void SSVMAddon::Compile(const Napi::CallbackInfo &Info) {
   CurBinPath = copyTmpFile(CurBinPath);
   CodeCache[CodeHash] = CurBinPath;
 }
+*/
 
+/*
 Napi::Value SSVMAddon::GetNativeBinary(const Napi::CallbackInfo &Info) {
   std::ifstream NativeBinary(CurBinPath, std::ifstream::binary);
   if (NativeBinary) {
@@ -336,7 +308,9 @@ Napi::Value SSVMAddon::GetNativeBinary(const Napi::CallbackInfo &Info) {
     return Info.Env().Undefined();
   }
 }
+*/
 
+/*
 void SSVMAddon::RunAot(const Napi::CallbackInfo &Info) {
   if (!isCompiled(IMode)) {
     Compile(Info);
@@ -391,6 +365,7 @@ void SSVMAddon::RunAot(const Napi::CallbackInfo &Info) {
     return;
   }
 }
+*/
 
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
     std::vector<SSVM::ValVariant> &Args, IntKind IntT) {
@@ -661,6 +636,8 @@ Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT) 
           uint32_t H = castFromBytesToU32(*ResMem, 4);
           return Napi::Number::New(Info.Env(), castFromU32ToU64(L, H));
         }
+        [[fallthrough]];
+      case IntKind::NonInt:
       default:
         napi_throw_error(Info.Env(), "Error", "SSVM-Napi implementation error: unknown integer type");
         return Napi::Value();
