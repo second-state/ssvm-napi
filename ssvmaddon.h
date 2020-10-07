@@ -27,7 +27,7 @@ public:
   };
 
   enum class IntKind {
-    NonInt,
+    Default,
     SInt32,
     UInt32,
     SInt64,
