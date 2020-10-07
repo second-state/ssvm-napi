@@ -204,6 +204,7 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
       switch (IntT) {
       case IntKind::SInt32:
       case IntKind::UInt32:
+      case IntKind::Default:
         Args.emplace_back(Arg.As<Napi::Number>().Uint32Value());
         break;
       case IntKind::SInt64:
@@ -217,7 +218,6 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
         Args.emplace_back(castFromU64ToU32(V >> 32));
         break;
       }
-      case IntKind::NonInt:
       default:
         napi_throw_error(Info.Env(), "Error", "SSVM-Napi implementation error: unknown integer type");
         return;
@@ -275,7 +275,7 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
 
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
     std::vector<SSVM::ValVariant> &Args) {
-  PrepareResource(Info, Args, IntKind::NonInt);
+  PrepareResource(Info, Args, IntKind::Default);
 }
 
 void SSVMAddon::ReleaseResource(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size) {
@@ -447,6 +447,7 @@ Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT) 
     switch (IntT) {
       case IntKind::SInt32:
       case IntKind::UInt32:
+      case IntKind::Default:
         return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
       case IntKind::SInt64:
       case IntKind::UInt64:
@@ -455,7 +456,6 @@ Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT) 
           uint32_t H = castFromBytesToU32(*ResMem, 4);
           return Napi::Number::New(Info.Env(), castFromU32ToU64(L, H));
         }
-      case IntKind::NonInt:
       default:
         napi_throw_error(Info.Env(), "Error", "SSVM-Napi implementation error: unknown integer type");
         return Napi::Value();
