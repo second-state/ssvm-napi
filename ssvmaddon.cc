@@ -71,19 +71,22 @@ inline uint64_t castFromU32ToU64(uint32_t L, uint32_t H) {
   return static_cast<uint64_t>(L) | (static_cast<uint64_t>(H) << 32);
 }
 
-std::string createTmpFile() {
-  char *TmpName = strdup("/tmp/ssvmTmpCode-XXXXXX");
-  mkstemp(TmpName);
-  std::ofstream f(TmpName);
-  f.close();
-  return std::string(TmpName);
+inline bool isCached(std::string &SoFile) {
+  std::ifstream File(SoFile.c_str());
+  return File.good();
 }
 
-std::string copyTmpFile(std::string &FilePath) {
-  std::string SoName = FilePath+std::string(".so");
-  std::filesystem::copy_file(FilePath, SoName);
-  return SoName;
+inline std::string getSoFileName(size_t CodeHash) {
+  return std::string("/tmp/ssvm.tmp.")+std::to_string(CodeHash)+std::string(".so");
 }
+
+inline void dumpToFile(const std::string &SoFilePath, const std::vector<uint8_t> &Bytecode) {
+  std::ofstream SoFile(SoFilePath);
+  std::ostream_iterator<uint8_t> OutIter(SoFile);
+  std::copy(Bytecode.begin(), Bytecode.end(), OutIter);
+  SoFile.close();
+}
+
 
 bool isELF(const std::vector<uint8_t> &Bytecode) {
   if (Bytecode[0] == 0x7f &&
@@ -119,16 +122,6 @@ bool isCompiled(const SSVMAddon::InputMode &IMode) {
     return true;
   }
   return false;
-}
-
-std::string dumpToFile(const std::vector<uint8_t> &Bytecode) {
-  std::string TmpFilePath = createTmpFile();
-  TmpFilePath.append(".so");
-  std::ofstream TmpFile(TmpFilePath);
-  std::ostream_iterator<uint8_t> OutIter(TmpFile);
-  std::copy(Bytecode.begin(), Bytecode.end(), OutIter);
-  TmpFile.close();
-  return TmpFilePath;
 }
 
 } // namespace details
@@ -238,7 +231,6 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   }
 }
 
-/*
 bool SSVMAddon::Compile() {
   SSVM::Loader::Loader Loader;
   std::vector<SSVM::Byte> Data;
@@ -254,14 +246,22 @@ bool SSVMAddon::Compile() {
       std::cerr << "SSVM::NAPI::AOT::Load file failed. Error code: " << Err;
       return false;
     }
+  } else {
+    /// Input Bytecode
+    Data = InputBytecode;
   }
 
   /// Check hash.
+  /// If the compiled bytecode existed, return directly.
   std::size_t CodeHash = boost::hash_range(Data.begin(), Data.end());
-  if (CodeCache.find(CodeHash) != CodeCache.end()) {
+  CurBinPath = getSoFileName(CodeHash);
+  if (isCached(CurBinPath)) {
     return true;
+  } else {
+    dumpToFile(CurBinPath, Data);
   }
 
+  /// Compile wasm bytecode
   std::unique_ptr<SSVM::AST::Module> Module;
   if (auto Res = Loader.parseModule(Data)) {
     Module = std::move(*Res);
@@ -271,103 +271,14 @@ bool SSVMAddon::Compile() {
     return false;
   }
 
-  CurBinPath = createTmpFile();
   SSVM::AOT::Compiler Compiler;
   if (auto Res = Compiler.compile(Data, *Module, CurBinPath); !Res) {
     const auto Err = static_cast<uint32_t>(Res.error());
     std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
     return false;
   }
-  CurBinPath = copyTmpFile(CurBinPath);
-  CodeCache[CodeHash] = CurBinPath;
   return true;
 }
-*/
-
-/*
-Napi::Value SSVMAddon::GetNativeBinary(const Napi::CallbackInfo &Info) {
-  std::ifstream NativeBinary(CurBinPath, std::ifstream::binary);
-  if (NativeBinary) {
-    /// Determine file size
-    NativeBinary.seekg(0, NativeBinary.end);
-    std::size_t BinSize = NativeBinary.tellg();
-    NativeBinary.seekg(0, NativeBinary.beg);
-
-    /// Allocate buffer memory
-    char *Buf = new char [BinSize];
-
-    /// Get file content and close file
-    NativeBinary.read(Buf, BinSize);
-    NativeBinary.close();
-
-    Napi::ArrayBuffer ResultArrayBuffer =
-      Napi::ArrayBuffer::New(Info.Env(), Buf, BinSize);
-    Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
-        Info.Env(), BinSize, ResultArrayBuffer, 0, napi_uint8_array);
-    delete Buf;
-    return ResultTypedArray;
-  } else {
-    return Info.Env().Undefined();
-  }
-}
-*/
-
-/*
-void SSVMAddon::RunAot(const Napi::CallbackInfo &Info) {
-  if (!isCompiled(IMode)) {
-    Compile(Info);
-  } else { /// ELF, MachO from InputBytecode
-    CurAotBinPath = dumpToFile(InputBytecode);
-  }
-
-
-  SSVM::VM::Configure Conf;
-  Conf.addVMType(SSVM::VM::Configure::VMType::Wasi);
-  SSVM::VM::VM VM(Conf);
-
-  SSVM::Log::setErrorLoggingLevel();
-
-  SSVM::Host::WasiModule *WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
-      VM.getImportModule(SSVM::VM::Configure::VMType::Wasi));
-
-  /// Handle arguments from the wasi options
-  if (Info.Length() > 0) {
-    Napi::Object WasiOptions = Info[0].As<Napi::Object>();
-    if (!parseCmdArgs(WasiCmdArgs, WasiOptions)) {
-      Napi::Error::New(Info.Env(),
-          "Parse commandline arguments from Wasi options failed.")
-        .ThrowAsJavaScriptException();
-      return;
-    }
-    if (!parseDirs(WasiDirs, WasiOptions)) {
-      Napi::Error::New(Info.Env(),
-          "Parse preopens from Wasi options failed.")
-        .ThrowAsJavaScriptException();
-      return;
-    }
-    if (!parseEnvs(WasiEnvs, WasiOptions)) {
-      Napi::Error::New(Info.Env(),
-          "Parse environment variables from Wasi options failed.")
-        .ThrowAsJavaScriptException();
-      return;
-    }
-  }
-
-  /// Set up the wasi modules with given wasi options
-  WasiMod->getEnv().init(WasiDirs, FuncName, WasiCmdArgs, WasiEnvs);
-
-  /// Execute
-  if (auto Result = VM.runWasmFile(CurAotBinPath, "_start")) {
-    return;
-  } else {
-    std::cerr << "Failed. Error code : "
-              << static_cast<uint32_t>(Result.error()) << '\n';
-    Napi::TypeError::New(Info.Env(), "Execution failed.")
-      .ThrowAsJavaScriptException();
-    return;
-  }
-}
-*/
 
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
     std::vector<SSVM::ValVariant> &Args, IntKind IntT) {
@@ -599,6 +510,24 @@ Napi::Value SSVMAddon::StartImplInt(const Napi::CallbackInfo &Info) {
 }
 
 Napi::Value SSVMAddon::StartImplAot(const Napi::CallbackInfo &Info) {
+  InitVM(Info);
+
+  std::string FuncName = "_start";
+  std::vector<std::string> MainCmdArgs = WasiCmdArgs;
+  MainCmdArgs.erase(MainCmdArgs.begin(), MainCmdArgs.begin()+2);
+  WasiMod->getEnv().init(WasiDirs, FuncName, MainCmdArgs,
+                         WasiEnvs);
+
+  // command mode
+  auto Result = VM->runWasmFile(InputPath, "_start");
+  if (!Result) {
+    Napi::Error::New(Info.Env(), "SSVM execution failed")
+      .ThrowAsJavaScriptException();
+    return Napi::Value();
+  }
+  auto ErrCode = WasiMod->getEnv().getExitCode();
+  WasiMod->getEnv().fini();
+  return Napi::Number::New(Info.Env(), ErrCode);
 }
 
 void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
