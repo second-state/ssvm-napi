@@ -226,8 +226,16 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
       VM->getImportModule(SSVM::VM::Configure::VMType::Wasi));
 
+  if (EnableAOT && !isCompiled(IMode)) {
+    Compile();
+  }
+
   if (!EnableWasiStart) {
     EnableWasmBindgen(Info);
+  }
+
+  if (EnableAOT) {
+    CallAOTInit(Info);
   }
 }
 
@@ -254,11 +262,9 @@ bool SSVMAddon::Compile() {
   /// Check hash.
   /// If the compiled bytecode existed, return directly.
   std::size_t CodeHash = boost::hash_range(Data.begin(), Data.end());
-  CurBinPath = getSoFileName(CodeHash);
-  if (isCached(CurBinPath)) {
+  InputPath = getSoFileName(CodeHash);
+  if (isCached(InputPath)) {
     return true;
-  } else {
-    dumpToFile(CurBinPath, Data);
   }
 
   /// Compile wasm bytecode
@@ -272,7 +278,7 @@ bool SSVMAddon::Compile() {
   }
 
   SSVM::AOT::Compiler Compiler;
-  if (auto Res = Compiler.compile(Data, *Module, CurBinPath); !Res) {
+  if (auto Res = Compiler.compile(Data, *Module, InputPath); !Res) {
     const auto Err = static_cast<uint32_t>(Res.error());
     std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
     return false;
@@ -480,36 +486,6 @@ bool SSVMAddon::parseAOTConfig(const Napi::Object &WasiOptions) {
 }
 
 Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
-  if (EnableAOT) {
-    return StartImplAot(Info);
-  } else {
-    return StartImplInt(Info);
-  }
-}
-
-Napi::Value SSVMAddon::StartImplInt(const Napi::CallbackInfo &Info) {
-  InitVM(Info);
-  std::string FuncName = "_start";
-  std::vector<std::string> MainCmdArgs = WasiCmdArgs;
-  MainCmdArgs.erase(MainCmdArgs.begin(), MainCmdArgs.begin()+2);
-  WasiMod->getEnv().init(WasiDirs, FuncName, MainCmdArgs, WasiEnvs);
-
-  SSVM::Expect<std::vector<SSVM::ValVariant>> Res;
-  if (IMode == InputMode::FilePath) {
-    Res = VM->runWasmFile(InputPath, FuncName);
-  } else {
-    Res = VM->runWasmFile(InputBytecode, FuncName);
-  }
-  if (!Res) {
-    Napi::Error::New(Info.Env(), "SSVM execution failed")
-      .ThrowAsJavaScriptException();
-    return Napi::Value();
-  }
-  WasiMod->getEnv().fini();
-  return Napi::Number::New(Info.Env(), 0);
-}
-
-Napi::Value SSVMAddon::StartImplAot(const Napi::CallbackInfo &Info) {
   InitVM(Info);
 
   std::string FuncName = "_start";
@@ -530,16 +506,28 @@ Napi::Value SSVMAddon::StartImplAot(const Napi::CallbackInfo &Info) {
   return Napi::Number::New(Info.Env(), ErrCode);
 }
 
-void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
-  if (EnableAOT) {
-    RunImplAot(Info);
-  } else {
-    RunImplInt(Info);
+void SSVMAddon::CallAOTInit(const Napi::CallbackInfo &Info) {
+  using namespace std::literals::string_literals;
+  const auto InitFunc = "_initialize"s;
+
+  bool HasInit = false;
+
+  for (const auto &Func : VM->getFunctionList()) {
+    if (Func.first == InitFunc) {
+      HasInit = true;
+    }
+  }
+
+  if (HasInit) {
+    if (auto Result = VM->execute(InitFunc); !Result) {
+      napi_throw_error(Info.Env(), "Error", "SSVM cannot initialize wasi env");
+    }
   }
 }
 
-void SSVMAddon::RunImplInt(const Napi::CallbackInfo &Info) {
+void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   InitVM(Info);
+
   std::string FuncName = "";
   if (Info.Length() > 0) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
@@ -558,18 +546,7 @@ void SSVMAddon::RunImplInt(const Napi::CallbackInfo &Info) {
   WasiMod->getEnv().fini();
 }
 
-void SSVMAddon::RunImplAot(const Napi::CallbackInfo &Info) {
-}
-
 Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT) {
-  if (EnableAOT) {
-    return RunIntImplAot(Info, IntT);
-  } else {
-    return RunIntImplInt(Info, IntT);
-  }
-}
-
-Napi::Value SSVMAddon::RunIntImplInt(const Napi::CallbackInfo &Info, IntKind IntT) {
   InitVM(Info);
   std::string FuncName = "";
   if (Info.Length() > 0) {
@@ -598,7 +575,6 @@ Napi::Value SSVMAddon::RunIntImplInt(const Napi::CallbackInfo &Info, IntKind Int
           return Napi::Number::New(Info.Env(), castFromU32ToU64(L, H));
         }
         [[fallthrough]];
-      case IntKind::NonInt:
       default:
         napi_throw_error(Info.Env(), "Error", "SSVM-Napi implementation error: unknown integer type");
         return Napi::Value();
@@ -607,9 +583,6 @@ Napi::Value SSVMAddon::RunIntImplInt(const Napi::CallbackInfo &Info, IntKind Int
     napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
     return Napi::Value();
   }
-}
-
-Napi::Value SSVMAddon::RunIntImplAot(const Napi::CallbackInfo &Info, IntKind IntT) {
 }
 
 Napi::Value SSVMAddon::RunInt(const Napi::CallbackInfo &Info) {
@@ -629,14 +602,6 @@ Napi::Value SSVMAddon::RunUInt64(const Napi::CallbackInfo &Info) {
 }
 
 Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
-  if (EnableAOT) {
-    return RunStringImplAot(Info);
-  } else {
-    return RunStringImplInt(Info);
-  }
-}
-
-Napi::Value SSVMAddon::RunStringImplInt(const Napi::CallbackInfo &Info) {
   InitVM(Info);
   std::string FuncName = "";
   if (Info.Length() > 0) {
@@ -680,18 +645,7 @@ Napi::Value SSVMAddon::RunStringImplInt(const Napi::CallbackInfo &Info) {
   return Napi::String::New(Info.Env(), ResultString);
 }
 
-Napi::Value SSVMAddon::RunStringImplAot(const Napi::CallbackInfo &Info) {
-}
-
 Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
-  if (EnableAOT) {
-    return RunUint8ArrayImplAot(Info);
-  } else {
-    return RunUint8ArrayImplInt(Info);
-  }
-}
-
-Napi::Value SSVMAddon::RunUint8ArrayImplInt(const Napi::CallbackInfo &Info) {
   InitVM(Info);
   std::string FuncName = "";
   if (Info.Length() > 0) {
@@ -738,9 +692,6 @@ Napi::Value SSVMAddon::RunUint8ArrayImplInt(const Napi::CallbackInfo &Info) {
       Info.Env(), ResultDataLen, ResultArrayBuffer, 0, napi_uint8_array);
   WasiMod->getEnv().fini();
   return ResultTypedArray;
-}
-
-Napi::Value SSVMAddon::RunUint8ArrayImplAot(const Napi::CallbackInfo &Info) {
 }
 
 void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {

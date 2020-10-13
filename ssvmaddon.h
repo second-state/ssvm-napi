@@ -67,28 +67,19 @@ private:
   void ReleaseResource(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size);
   /// Run functions
   void Run(const Napi::CallbackInfo &Info);
-  void RunImplInt(const Napi::CallbackInfo &Info);
-  void RunImplAot(const Napi::CallbackInfo &Info);
   Napi::Value RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT);
-  Napi::Value RunIntImplInt(const Napi::CallbackInfo &Info, IntKind IntT);
-  Napi::Value RunIntImplAot(const Napi::CallbackInfo &Info, IntKind IntT);
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunUInt(const Napi::CallbackInfo &Info);
   Napi::Value RunInt64(const Napi::CallbackInfo &Info);
   Napi::Value RunUInt64(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
-  Napi::Value RunStringImplInt(const Napi::CallbackInfo &Info);
-  Napi::Value RunStringImplAot(const Napi::CallbackInfo &Info);
   Napi::Value RunUint8Array(const Napi::CallbackInfo &Info);
-  Napi::Value RunUint8ArrayImplInt(const Napi::CallbackInfo &Info);
-  Napi::Value RunUint8ArrayImplAot(const Napi::CallbackInfo &Info);
   Napi::Value Start(const Napi::CallbackInfo &Info);
-  Napi::Value StartImplInt(const Napi::CallbackInfo &Info);
-  Napi::Value StartImplAot(const Napi::CallbackInfo &Info);
   /// Statistics
   Napi::Value GetStatistics(const Napi::CallbackInfo &Info);
   /// AoT functions
   bool Compile();
+  void CallAOTInit(const Napi::CallbackInfo &Info);
 };
 
 #endif
