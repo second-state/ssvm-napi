@@ -4,15 +4,14 @@ on:
   push:
     branches:
       - master
+      - '*/test*'
   pull_request:
     branches:
       - master
 
 jobs:
   build_test_gcc:
-    runs-on: ubuntu-latest
-    container:
-      image: secondstate/ssvm:ubuntu-build-gcc
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
@@ -23,10 +22,12 @@ jobs:
       run: |
         JOBS=max npm install --fallback-to-build --update-binary . --unsafe-perm
 
+    - name: Test SSVM-napi built with gcc
+      run: |
+        JOBS=max npm test
+
   build_test_clang:
-    runs-on: ubuntu-latest
-    container:
-      image: secondstate/ssvm:ubuntu-build-clang
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
@@ -36,3 +37,7 @@ jobs:
     - name: Build SSVM-napi using clang
       run: |
         JOBS=max npm install --fallback-to-build --update-binary . --unsafe-perm
+
+    - name: Test SSVM-napi built with clang
+      run: |
+        JOBS=max npm test

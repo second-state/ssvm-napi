@@ -32,6 +32,7 @@
     "ssvmup": "^0.1.17"
   },
   "scripts": {
+    "test": "cd test && ./test.sh",
     "install": "node-pre-gyp install --fallback-to-build"
   }
 }
