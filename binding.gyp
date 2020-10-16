@@ -18,6 +18,7 @@
       },
       "sources": [
         "addon.cc",
+        "bytecode.cc",
         "utils.cc",
         "ssvmaddon.cc",
         "ssvm-core/lib/aot/compiler.cpp",

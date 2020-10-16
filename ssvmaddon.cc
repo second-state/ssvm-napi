@@ -8,7 +8,6 @@
 #include "utils.h"
 
 #include <limits>
-#include <cstdlib> // std::mkstemp
 #include <fstream> // std::ifstream, std::ofstream
 
 #include <boost/functional/hash.hpp>
@@ -40,16 +39,6 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
 }
 
 namespace {
-bool isWasm(const std::vector<uint8_t> &Bytecode) {
-  if (Bytecode[0] == 0x00 &&
-      Bytecode[1] == 0x61 &&
-      Bytecode[2] == 0x73 &&
-      Bytecode[3] == 0x6d) {
-    return true;
-  }
-  return false;
-}
-
 inline bool checkInputWasmFormat(const Napi::CallbackInfo &Info) {
   return Info.Length() <= 0 || (!Info[0].IsString() && !Info[0].IsTypedArray());
 }
@@ -87,42 +76,6 @@ inline void dumpToFile(const std::string &SoFilePath, const std::vector<uint8_t>
   SoFile.close();
 }
 
-
-bool isELF(const std::vector<uint8_t> &Bytecode) {
-  if (Bytecode[0] == 0x7f &&
-      Bytecode[1] == 0x45 &&
-      Bytecode[2] == 0x4c &&
-      Bytecode[3] == 0x46) {
-    return true;
-  }
-  return false;
-}
-
-bool isMachO(const std::vector<uint8_t> &Bytecode) {
-  if ((Bytecode[0] == 0xfe && // Mach-O 32 bit
-        Bytecode[1] == 0xed &&
-        Bytecode[2] == 0xfa &&
-        Bytecode[3] == 0xce) ||
-      (Bytecode[0] == 0xfe && // Mach-O 64 bit
-        Bytecode[1] == 0xed &&
-        Bytecode[2] == 0xfa &&
-        Bytecode[3] == 0xcf) ||
-      (Bytecode[0] == 0xca && // Mach-O Universal
-        Bytecode[1] == 0xfe &&
-        Bytecode[2] == 0xba &&
-        Bytecode[3] == 0xbe)) {
-    return true;
-  }
-  return false;
-}
-
-bool isCompiled(const SSVMAddon::InputMode &IMode) {
-  if (IMode == SSVMAddon::InputMode::MachOBytecode ||
-      IMode == SSVMAddon::InputMode::ELFBytecode) {
-    return true;
-  }
-  return false;
-}
 
 } // namespace details
 
@@ -178,23 +131,16 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
     // Handle input wasm
     if (Info[0].IsString()) {
       // Wasm file path
-      IMode = InputMode::FilePath;
-      InputPath = Info[0].As<Napi::String>().Utf8Value();
+      BC.setPath(std::move(Info[0].As<Napi::String>().Utf8Value()));
     } else if (Info[0].IsTypedArray()
         && Info[0].As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array) {
       // Wasm binary format
       Napi::ArrayBuffer DataBuffer = Info[0].As<Napi::TypedArray>().ArrayBuffer();
-      InputBytecode = std::vector<uint8_t>(
+      BC.setData(std::move(std::vector<uint8_t>(
           static_cast<uint8_t*>(DataBuffer.Data()),
-          static_cast<uint8_t*>(DataBuffer.Data()) + DataBuffer.ByteLength());
+          static_cast<uint8_t*>(DataBuffer.Data()) + DataBuffer.ByteLength())));
 
-      if (isWasm(InputBytecode)) {
-        IMode = InputMode::WasmBytecode;
-      } else if (isELF(InputBytecode)) {
-        IMode = InputMode::ELFBytecode;
-      } else if (isMachO(InputBytecode)) {
-        IMode = InputMode::MachOBytecode;
-      } else {
+      if (!BC.isValidData()) {
         napi_throw_error(
             Env,
             "Error",
@@ -226,7 +172,7 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
       VM->getImportModule(SSVM::VM::Configure::VMType::Wasi));
 
-  if (EnableAOT && !isCompiled(IMode)) {
+  if (EnableAOT && !BC.isCompiled()) {
     Compile();
   }
 
@@ -241,48 +187,46 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
 
 bool SSVMAddon::Compile() {
   SSVM::Loader::Loader Loader;
-  std::vector<SSVM::Byte> Data;
 
-  if (IMode == InputMode::FilePath) {
+  if (BC.isFile()) {
     /// File mode
-    /// We have to load bytecode from given file.
-    std::filesystem::path P = std::filesystem::absolute(std::filesystem::path(InputPath));
+    /// We have to load bytecode from given file first.
+    std::filesystem::path P = std::filesystem::absolute(std::filesystem::path(BC.getPath()));
     if (auto Res = Loader.loadFile(P.string())) {
-      Data = std::move(*Res);
+      BC.setData(std::move(*Res));
     } else {
       const auto Err = static_cast<uint32_t>(Res.error());
       std::cerr << "SSVM::NAPI::AOT::Load file failed. Error code: " << Err;
       return false;
     }
-  } else {
-    /// Input Bytecode
-    Data = InputBytecode;
   }
 
+  const std::vector<SSVM::Byte> &Data = BC.getData();
   /// Check hash.
   /// If the compiled bytecode existed, return directly.
   std::size_t CodeHash = boost::hash_range(Data.begin(), Data.end());
-  InputPath = getSoFileName(CodeHash);
-  if (isCached(InputPath)) {
-    return true;
+  std::string OutputPath = getSoFileName(CodeHash);
+
+  if (!isCached(OutputPath)) {
+    /// Cache not found. Compile wasm bytecode
+    std::unique_ptr<SSVM::AST::Module> Module;
+    if (auto Res = Loader.parseModule(Data)) {
+      Module = std::move(*Res);
+    } else {
+      const auto Err = static_cast<uint32_t>(Res.error());
+      std::cerr << "SSVM::NAPI::AOT::Parse module failed. Error code: " << Err;
+      return false;
+    }
+
+    SSVM::AOT::Compiler Compiler;
+    if (auto Res = Compiler.compile(Data, *Module, OutputPath); !Res) {
+      const auto Err = static_cast<uint32_t>(Res.error());
+      std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
+      return false;
+    }
   }
 
-  /// Compile wasm bytecode
-  std::unique_ptr<SSVM::AST::Module> Module;
-  if (auto Res = Loader.parseModule(Data)) {
-    Module = std::move(*Res);
-  } else {
-    const auto Err = static_cast<uint32_t>(Res.error());
-    std::cerr << "SSVM::NAPI::AOT::Parse module failed. Error code: " << Err;
-    return false;
-  }
-
-  SSVM::AOT::Compiler Compiler;
-  if (auto Res = Compiler.compile(Data, *Module, InputPath); !Res) {
-    const auto Err = static_cast<uint32_t>(Res.error());
-    std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
-    return false;
-  }
+  BC.setPath(OutputPath);
   return true;
 }
 
@@ -495,7 +439,7 @@ Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
                          WasiEnvs);
 
   // command mode
-  auto Result = VM->runWasmFile(InputPath, "_start");
+  auto Result = VM->runWasmFile(BC.getPath(), "_start");
   if (!Result) {
     Napi::Error::New(Info.Env(), "SSVM execution failed")
       .ThrowAsJavaScriptException();
@@ -698,14 +642,14 @@ void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
 
-  if (IMode == InputMode::FilePath && !(VM->loadWasm(InputPath))) {
+  if (BC.isFile() && !(VM->loadWasm(BC.getPath()))) {
     napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
     return;
-  } else if (IMode == InputMode::WasmBytecode) {
-    if (EnableAOT && !(VM->loadWasm(InputPath))) {
+  } else if (BC.isValidData()) {
+    if (EnableAOT && !(VM->loadWasm(BC.getPath()))) {
       napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
       return;
-    } else if (!EnableAOT && !(VM->loadWasm(InputBytecode))) {
+    } else if (!EnableAOT && !(VM->loadWasm(BC.getData()))) {
       napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
       return;
     }

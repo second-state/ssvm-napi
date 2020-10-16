@@ -1,10 +1,13 @@
 #ifndef SSVMADDON_H
 #define SSVMADDON_H
 
+#include "bytecode.h"
+
 #include "vm/configure.h"
 #include "vm/vm.h"
 #include "host/wasi/wasimodule.h"
 #include "common/statistics.h"
+
 #include <napi.h>
 #include <string>
 #include <vector>
@@ -17,13 +20,6 @@ public:
   ~SSVMAddon(){
     delete Configure;
     delete VM;
-  };
-
-  enum class InputMode {
-    FilePath,
-    WasmBytecode,
-    ELFBytecode,
-    MachOBytecode
   };
 
   enum class IntKind {
@@ -41,10 +37,10 @@ private:
   SSVM::Runtime::Instance::MemoryInstance *MemInst;
   SSVM::Statistics::Statistics Stat;
   SSVM::Host::WasiModule *WasiMod;
+  SSVM::NAPI::Bytecode BC;
   bool Inited;
   bool EnableWasiStart;
   bool EnableAOT;
-  InputMode IMode;
   std::string InputPath;
   std::vector<uint8_t> InputBytecode;
   std::vector<uint8_t> ResultData;
