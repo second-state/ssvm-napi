@@ -18,6 +18,10 @@ jobs:
       with:
         submodules: recursive
 
+    - name: Install dependencies
+      run: |
+        sudo apt-get install llvm-dev liblld-10-dev libboost-all-dev
+
     - name: Build SSVM-napi using gcc
       run: |
         JOBS=max npm install --fallback-to-build --update-binary . --unsafe-perm
@@ -33,6 +37,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install llvm-dev liblld-10-dev libboost-all-dev
 
     - name: Build SSVM-napi using clang
       run: |
