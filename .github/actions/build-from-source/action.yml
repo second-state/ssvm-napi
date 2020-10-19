@@ -1,0 +1,17 @@
+name: Build SSVM-napi
+
+inputs:
+  cc:
+    default: 'clang'
+  cxx:
+    default: 'clang++'
+
+runs:
+  using: 'composite'
+  steps:
+  - shell: bash
+    env:
+      CC: ${{ inputs.cc }}
+      CXX: ${{ inputs.cxx }}
+    run: |
+      JOBS=max npm install --build-from-source . --unsafe-perm
