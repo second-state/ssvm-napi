@@ -5,6 +5,8 @@ inputs:
     default: 'clang'
   cxx:
     default: 'clang++'
+  path:
+    default: '.'
 
 runs:
   using: 'composite'
@@ -14,4 +16,4 @@ runs:
       CC: ${{ inputs.cc }}
       CXX: ${{ inputs.cxx }}
     run: |
-      JOBS=max npm install --build-from-source . --unsafe-perm
+      JOBS=max npm install --build-from-source --unsafe-perm ${{ inputs.path }}
