@@ -1,0 +1,67 @@
+name: External Test
+
+on:
+  push:
+    branches:
+      - '**/test*'
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  test_wasm_learning:
+    runs-on: ubuntu-20.04
+
+    strategy:
+      matrix:
+        node-version: [10.x, 12.x, 14.x]
+        ssvm-options: ['']
+
+    steps:
+    # MAGIC: Checkout wasm-learning at $GITHUB_WORKSPACE so that node
+    #        module search will find 'ssvm' from inside the testdirs.
+    - name: Checkout wasm-learning
+      uses: actions/checkout@v2
+      with:
+        repository: second-state/wasm-learning
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+
+    - name: Checkout SSVM-napi
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        path: ssvm-napi
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install llvm-dev liblld-10-dev libboost-all-dev
+        npm i -g ssvmup
+
+    - name: Build and install SSVM-napi
+      uses: './ssvm-napi/.github/actions/build-from-source'
+      with:
+        path: './ssvm-napi'
+
+    - name: Test functions ${{ matrix.ssvm-options }}
+      run: |
+        ssvmup build ${{ matrix.ssvm-options }}
+        node node/app.js
+        ssvmup clean
+      working-directory: nodejs/functions
+
+    - name: Test JSON IO ${{ matrix.ssvm-options }}
+      run: |
+        ssvmup build ${{ matrix.ssvm-options }}
+        node node/app.js
+        ssvmup clean
+      working-directory: nodejs/json_io
+
+    - name: Test WASI ${{ matrix.ssvm-options }}
+      run: |
+        ssvmup build ${{ matrix.ssvm-options }}
+        node node/app.js
+        ssvmup clean
+      working-directory: nodejs/wasi
