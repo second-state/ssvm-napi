@@ -64,6 +64,9 @@ bool Bytecode::isCompiled() const noexcept {
 }
 
 bool Bytecode::isValidData() const noexcept {
+  if (isFile()) {
+    return false;
+  }
   if (isWasm() || isELF() || isMachO()) {
     return true;
   }
