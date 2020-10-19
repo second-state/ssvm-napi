@@ -7,8 +7,8 @@
 #include "support/span.h"
 #include "utils.h"
 
-#include <limits>
 #include <fstream> // std::ifstream, std::ofstream
+#include <limits>
 
 #include <boost/functional/hash.hpp>
 
@@ -20,16 +20,16 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   SSVM::NAPI::checkLibCXXVersion();
 
   Napi::Function Func =
-    DefineClass(Env, "VM", {
-        InstanceMethod("GetStatistics", &SSVMAddon::GetStatistics),
-        InstanceMethod("Start", &SSVMAddon::Start),
-        InstanceMethod("Run", &SSVMAddon::Run),
-        InstanceMethod("RunInt", &SSVMAddon::RunInt),
-        InstanceMethod("RunUInt", &SSVMAddon::RunUInt),
-        InstanceMethod("RunInt64", &SSVMAddon::RunInt64),
-        InstanceMethod("RunUInt64", &SSVMAddon::RunUInt64),
-        InstanceMethod("RunString", &SSVMAddon::RunString),
-        InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
+      DefineClass(Env, "VM",
+                  {InstanceMethod("GetStatistics", &SSVMAddon::GetStatistics),
+                   InstanceMethod("Start", &SSVMAddon::Start),
+                   InstanceMethod("Run", &SSVMAddon::Run),
+                   InstanceMethod("RunInt", &SSVMAddon::RunInt),
+                   InstanceMethod("RunUInt", &SSVMAddon::RunUInt),
+                   InstanceMethod("RunInt64", &SSVMAddon::RunInt64),
+                   InstanceMethod("RunUInt64", &SSVMAddon::RunUInt64),
+                   InstanceMethod("RunString", &SSVMAddon::RunString),
+                   InstanceMethod("RunUint8Array", &SSVMAddon::RunUint8Array)});
 
   Constructor = Napi::Persistent(Func);
   Constructor.SuppressDestruct();
@@ -49,11 +49,13 @@ inline bool isWasiOptionsProvided(const Napi::CallbackInfo &Info) {
 
 inline uint32_t castFromU64ToU32(uint64_t V) {
   return static_cast<uint32_t>(
-    V & static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
+      V & static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
 }
 
-inline uint32_t castFromBytesToU32(const SSVM::Span<SSVM::Byte>& Bytes, int Idx) {
-  return Bytes[Idx] | (Bytes[Idx + 1] << 8) | (Bytes[Idx + 2] << 16) | (Bytes[Idx + 3] << 24);
+inline uint32_t castFromBytesToU32(const SSVM::Span<SSVM::Byte> &Bytes,
+                                   int Idx) {
+  return Bytes[Idx] | (Bytes[Idx + 1] << 8) | (Bytes[Idx + 2] << 16) |
+         (Bytes[Idx + 3] << 24);
 }
 
 inline uint64_t castFromU32ToU64(uint32_t L, uint32_t H) {
@@ -66,94 +68,83 @@ inline bool isCached(std::string &SoFile) {
 }
 
 inline std::string getSoFileName(size_t CodeHash) {
-  return std::string("/tmp/ssvm.tmp.")+std::to_string(CodeHash)+std::string(".so");
+  return std::string("/tmp/ssvm.tmp.") + std::to_string(CodeHash) +
+         std::string(".so");
 }
 
-inline void dumpToFile(const std::string &SoFilePath, const std::vector<uint8_t> &Bytecode) {
+inline void dumpToFile(const std::string &SoFilePath,
+                       const std::vector<uint8_t> &Bytecode) {
   std::ofstream SoFile(SoFilePath);
   std::ostream_iterator<uint8_t> OutIter(SoFile);
   std::copy(Bytecode.begin(), Bytecode.end(), OutIter);
   SoFile.close();
 }
 
-
-} // namespace details
+} // namespace
 
 SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
-  : Napi::ObjectWrap<SSVMAddon>(Info), Configure(nullptr),
-  VM(nullptr), MemInst(nullptr),
-  WasiMod(nullptr), Inited(false) {
+    : Napi::ObjectWrap<SSVMAddon>(Info), Configure(nullptr), VM(nullptr),
+      MemInst(nullptr), WasiMod(nullptr), Inited(false) {
 
-    Napi::Env Env = Info.Env();
-    Napi::HandleScope Scope(Env);
+  Napi::Env Env = Info.Env();
+  Napi::HandleScope Scope(Env);
 
-    if (checkInputWasmFormat(Info)) {
-      napi_throw_error(
-          Env,
-          "Error",
-          "Expected a Wasm file or a Wasm binary sequence.");
-      return;
-    }
-
-    // Assume the WasmBindgen is enabled by default.
-    // Assume the WASI options object is {}
-
-    // Check if a Wasi options object is given or not
-    if (isWasiOptionsProvided(Info)) {
-      // Get a WASI options object
-      Napi::Object WasiOptions = Info[1].As<Napi::Object>();
-      if (!parseCmdArgs(Options.getWasiCmdArgs(), WasiOptions)) {
-        napi_throw_error(
-            Env,
-            "Error",
-            "Parse commandline arguments from Wasi options failed.");
-        return;
-      }
-      if (!parseDirs(Options.getWasiDirs(), WasiOptions)) {
-        napi_throw_error(
-            Env,
-            "Error",
-            "Parse preopens from Wasi options failed.");
-        return;
-      }
-      if (!parseEnvs(Options.getWasiEnvs(), WasiOptions)) {
-        napi_throw_error(
-            Env,
-            "Error",
-            "Parse environment variables from Wasi options failed.");
-        return;
-      }
-      Options.setReactorMode(!parseWasiStartFlag(WasiOptions));
-      Options.setAOTMode(parseAOTConfig(WasiOptions));
-    }
-
-    // Handle input wasm
-    if (Info[0].IsString()) {
-      // Wasm file path
-      BC.setPath(std::move(Info[0].As<Napi::String>().Utf8Value()));
-    } else if (Info[0].IsTypedArray()
-        && Info[0].As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array) {
-      // Wasm binary format
-      Napi::ArrayBuffer DataBuffer = Info[0].As<Napi::TypedArray>().ArrayBuffer();
-      BC.setData(std::move(std::vector<uint8_t>(
-          static_cast<uint8_t*>(DataBuffer.Data()),
-          static_cast<uint8_t*>(DataBuffer.Data()) + DataBuffer.ByteLength())));
-
-      if (!BC.isValidData()) {
-        napi_throw_error(
-            Env,
-            "Error",
-            "Unknown bytecode format.");
-        return;
-      }
-    } else {
-      napi_throw_error(
-          Env,
-          "Error",
-          "Wasm bytecode is not a valid Uint8Array or not a valid file path.");
-      return;
-    }
+  if (checkInputWasmFormat(Info)) {
+    napi_throw_error(Env, "Error",
+                     "Expected a Wasm file or a Wasm binary sequence.");
+    return;
   }
+
+  // Assume the WasmBindgen is enabled by default.
+  // Assume the WASI options object is {}
+
+  // Check if a Wasi options object is given or not
+  if (isWasiOptionsProvided(Info)) {
+    // Get a WASI options object
+    Napi::Object WasiOptions = Info[1].As<Napi::Object>();
+    if (!parseCmdArgs(Options.getWasiCmdArgs(), WasiOptions)) {
+      napi_throw_error(Env, "Error",
+                       "Parse commandline arguments from Wasi options failed.");
+      return;
+    }
+    if (!parseDirs(Options.getWasiDirs(), WasiOptions)) {
+      napi_throw_error(Env, "Error",
+                       "Parse preopens from Wasi options failed.");
+      return;
+    }
+    if (!parseEnvs(Options.getWasiEnvs(), WasiOptions)) {
+      napi_throw_error(Env, "Error",
+                       "Parse environment variables from Wasi options failed.");
+      return;
+    }
+    Options.setReactorMode(!parseWasiStartFlag(WasiOptions));
+    Options.setAOTMode(parseAOTConfig(WasiOptions));
+  }
+
+  // Handle input wasm
+  if (Info[0].IsString()) {
+    // Wasm file path
+    BC.setPath(std::move(Info[0].As<Napi::String>().Utf8Value()));
+  } else if (Info[0].IsTypedArray() &&
+             Info[0].As<Napi::TypedArray>().TypedArrayType() ==
+                 napi_uint8_array) {
+    // Wasm binary format
+    Napi::ArrayBuffer DataBuffer = Info[0].As<Napi::TypedArray>().ArrayBuffer();
+    BC.setData(std::move(std::vector<uint8_t>(
+        static_cast<uint8_t *>(DataBuffer.Data()),
+        static_cast<uint8_t *>(DataBuffer.Data()) + DataBuffer.ByteLength())));
+
+    if (!BC.isValidData()) {
+      napi_throw_error(Env, "Error", "Unknown bytecode format.");
+      return;
+    }
+  } else {
+    napi_throw_error(
+        Env, "Error",
+        "Wasm bytecode is not a valid Uint8Array or not a valid file path.");
+    return;
+  }
+}
 
 void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   if (Inited) {
@@ -190,7 +181,8 @@ bool SSVMAddon::Compile() {
   if (BC.isFile()) {
     /// File mode
     /// We have to load bytecode from given file first.
-    std::filesystem::path P = std::filesystem::absolute(std::filesystem::path(BC.getPath()));
+    std::filesystem::path P =
+        std::filesystem::absolute(std::filesystem::path(BC.getPath()));
     if (auto Res = Loader.loadFile(P.string())) {
       BC.setData(std::move(*Res));
     } else {
@@ -230,7 +222,8 @@ bool SSVMAddon::Compile() {
 }
 
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
-    std::vector<SSVM::ValVariant> &Args, IntKind IntT) {
+                                std::vector<SSVM::ValVariant> &Args,
+                                IntKind IntT) {
   for (std::size_t I = 1; I < Info.Length(); I++) {
     Napi::Value Arg = Info[I];
     uint32_t MallocSize = 0, MallocAddr = 0;
@@ -253,7 +246,9 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
         break;
       }
       default:
-        napi_throw_error(Info.Env(), "Error", "SSVM-Napi implementation error: unknown integer type");
+        napi_throw_error(
+            Info.Env(), "Error",
+            "SSVM-Napi implementation error: unknown integer type");
         return;
       }
       continue;
@@ -261,16 +256,13 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
       std::string StrArg = Arg.As<Napi::String>().Utf8Value();
       MallocSize = StrArg.length();
     } else if (Arg.IsTypedArray() &&
-        Arg.As<Napi::TypedArray>().TypedArrayType() ==
-        napi_uint8_array) {
+               Arg.As<Napi::TypedArray>().TypedArrayType() ==
+                   napi_uint8_array) {
       Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
       MallocSize = DataBuffer.ByteLength();
     } else {
       // TODO: support other types
-      napi_throw_error(
-          Info.Env(),
-          "Error",
-          "unsupported argument type");
+      napi_throw_error(Info.Env(), "Error", "unsupported argument type");
       return;
     }
 
@@ -279,9 +271,9 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
     Params.emplace_back(MallocSize);
     auto Res = VM->execute("__wbindgen_malloc", Params);
     if (!Res) {
-      std::string MallocError(
-          "SSVMAddon.cc::PrepareResource::__wbindgen_malloc"
-          "SSVM-js malloc failed: wasm-bindgen helper function <__wbindgen_malloc> not found.\n");
+      std::string MallocError("SSVMAddon.cc::PrepareResource::__wbindgen_malloc"
+                              "SSVM-js malloc failed: wasm-bindgen helper "
+                              "function <__wbindgen_malloc> not found.\n");
       napi_throw_error(Info.Env(), "Error", MallocError.c_str());
       return;
     }
@@ -298,8 +290,8 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
       std::vector<uint8_t> StrArgVec(StrArg.begin(), StrArg.end());
       MemInst->setBytes(StrArgVec, MallocAddr, 0, StrArgVec.size());
     } else if (Arg.IsTypedArray() &&
-        Arg.As<Napi::TypedArray>().TypedArrayType() ==
-        napi_uint8_array) {
+               Arg.As<Napi::TypedArray>().TypedArrayType() ==
+                   napi_uint8_array) {
       Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
       uint8_t *Data = (uint8_t *)DataBuffer.Data();
       MemInst->setArray(Data, MallocAddr, DataBuffer.ByteLength());
@@ -308,36 +300,37 @@ void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
 }
 
 void SSVMAddon::PrepareResource(const Napi::CallbackInfo &Info,
-    std::vector<SSVM::ValVariant> &Args) {
+                                std::vector<SSVM::ValVariant> &Args) {
   PrepareResource(Info, Args, IntKind::Default);
 }
 
-void SSVMAddon::ReleaseResource(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size) {
+void SSVMAddon::ReleaseResource(const Napi::CallbackInfo &Info,
+                                const uint32_t Offset, const uint32_t Size) {
   std::vector<SSVM::ValVariant> Params = {Offset, Size};
   auto Res = VM->execute("__wbindgen_free", Params);
   if (!Res) {
-    std::string FreeError(
-        "SSVMAddon.cc::ReleaseResource::__wbindgen_free"
-        "SSVM-js free failed: wasm-bindgen helper function <__wbindgen_free> not found.\n");
+    std::string FreeError("SSVMAddon.cc::ReleaseResource::__wbindgen_free"
+                          "SSVM-js free failed: wasm-bindgen helper function "
+                          "<__wbindgen_free> not found.\n");
     napi_throw_error(Info.Env(), "Error", FreeError.c_str());
     return;
   }
 }
 
 bool SSVMAddon::parseWasiStartFlag(const Napi::Object &WasiOptions) {
-  if (WasiOptions.Has("EnableWasiStartFunction")
-      && WasiOptions.Get("EnableWasiStartFunction").IsBoolean()) {
-    return WasiOptions.Get("EnableWasiStartFunction").As<Napi::Boolean>().Value();
+  if (WasiOptions.Has("EnableWasiStartFunction") &&
+      WasiOptions.Get("EnableWasiStartFunction").IsBoolean()) {
+    return WasiOptions.Get("EnableWasiStartFunction")
+        .As<Napi::Boolean>()
+        .Value();
   }
   return false;
 }
 
-bool SSVMAddon::parseCmdArgs(
-    std::vector<std::string> &CmdArgs,
-    const Napi::Object &WasiOptions) {
+bool SSVMAddon::parseCmdArgs(std::vector<std::string> &CmdArgs,
+                             const Napi::Object &WasiOptions) {
   CmdArgs.clear();
-  if (WasiOptions.Has("args")
-      && WasiOptions.Get("args").IsArray()) {
+  if (WasiOptions.Has("args") && WasiOptions.Get("args").IsArray()) {
     Napi::Array Args = WasiOptions.Get("args").As<Napi::Array>();
     for (uint32_t i = 0; i < Args.Length(); i++) {
       Napi::Value Arg = Args[i];
@@ -346,12 +339,12 @@ bool SSVMAddon::parseCmdArgs(
       } else if (Arg.IsString()) {
         CmdArgs.push_back(Arg.As<Napi::String>().Utf8Value());
       } else if (Arg.IsTypedArray() &&
-          Arg.As<Napi::TypedArray>().TypedArrayType() ==
-          napi_uint8_array) {
+                 Arg.As<Napi::TypedArray>().TypedArrayType() ==
+                     napi_uint8_array) {
         Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
         std::string ArrayArg = std::string(
-            static_cast<char*>(DataBuffer.Data()),
-            static_cast<char*>(DataBuffer.Data()) + DataBuffer.ByteLength());
+            static_cast<char *>(DataBuffer.Data()),
+            static_cast<char *>(DataBuffer.Data()) + DataBuffer.ByteLength());
         CmdArgs.push_back(ArrayArg);
       } else {
         // TODO: support other types
@@ -362,12 +355,10 @@ bool SSVMAddon::parseCmdArgs(
   return true;
 }
 
-bool SSVMAddon::parseDirs(
-    std::vector<std::string> &Dirs,
-    const Napi::Object &WasiOptions) {
+bool SSVMAddon::parseDirs(std::vector<std::string> &Dirs,
+                          const Napi::Object &WasiOptions) {
   Dirs.clear();
-  if (WasiOptions.Has("preopens")
-      && WasiOptions.Get("preopens").IsObject()) {
+  if (WasiOptions.Has("preopens") && WasiOptions.Get("preopens").IsObject()) {
     Napi::Object Preopens = WasiOptions.Get("preopens").As<Napi::Object>();
     Napi::Array Keys = Preopens.GetPropertyNames();
     for (uint32_t i = 0; i < Keys.Length(); i++) {
@@ -391,12 +382,10 @@ bool SSVMAddon::parseDirs(
   return true;
 }
 
-bool SSVMAddon::parseEnvs(
-    std::vector<std::string> &Envs,
-    const Napi::Object &WasiOptions) {
+bool SSVMAddon::parseEnvs(std::vector<std::string> &Envs,
+                          const Napi::Object &WasiOptions) {
   Envs.clear();
-  if (WasiOptions.Has("env")
-      && WasiOptions.Get("env").IsObject()) {
+  if (WasiOptions.Has("env") && WasiOptions.Get("env").IsObject()) {
     Napi::Object Environs = WasiOptions.Get("env").As<Napi::Object>();
     Napi::Array Keys = Environs.GetPropertyNames();
     for (uint32_t i = 0; i < Keys.Length(); i++) {
@@ -421,8 +410,8 @@ bool SSVMAddon::parseEnvs(
 }
 
 bool SSVMAddon::parseAOTConfig(const Napi::Object &WasiOptions) {
-  if (WasiOptions.Has("EnableAOT")
-      && WasiOptions.Get("EnableAOT").IsBoolean()) {
+  if (WasiOptions.Has("EnableAOT") &&
+      WasiOptions.Get("EnableAOT").IsBoolean()) {
     return WasiOptions.Get("EnableAOT").As<Napi::Boolean>().Value();
   }
   return false;
@@ -433,7 +422,7 @@ Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
 
   std::string FuncName = "_start";
   std::vector<std::string> MainCmdArgs = Options.getWasiCmdArgs();
-  MainCmdArgs.erase(MainCmdArgs.begin(), MainCmdArgs.begin()+2);
+  MainCmdArgs.erase(MainCmdArgs.begin(), MainCmdArgs.begin() + 2);
   WasiMod->getEnv().init(Options.getWasiDirs(), FuncName, MainCmdArgs,
                          Options.getWasiEnvs());
 
@@ -441,7 +430,7 @@ Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
   auto Result = VM->runWasmFile(BC.getPath(), "_start");
   if (!Result) {
     Napi::Error::New(Info.Env(), "SSVM execution failed")
-      .ThrowAsJavaScriptException();
+        .ThrowAsJavaScriptException();
     return Napi::Value();
   }
   auto ErrCode = WasiMod->getEnv().getExitCode();
@@ -490,7 +479,8 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   WasiMod->getEnv().fini();
 }
 
-Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT) {
+Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info,
+                                  IntKind IntT) {
   InitVM(Info);
   std::string FuncName = "";
   if (Info.Length() > 0) {
@@ -508,21 +498,22 @@ Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT) 
     Rets = *Res;
     WasiMod->getEnv().fini();
     switch (IntT) {
-      case IntKind::SInt32:
-      case IntKind::UInt32:
-      case IntKind::Default:
-        return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
-      case IntKind::SInt64:
-      case IntKind::UInt64:
-        if (auto ResMem = MemInst->getBytes(0, 8)) {
-          uint32_t L = castFromBytesToU32(*ResMem, 0);
-          uint32_t H = castFromBytesToU32(*ResMem, 4);
-          return Napi::Number::New(Info.Env(), castFromU32ToU64(L, H));
-        }
-        [[fallthrough]];
-      default:
-        napi_throw_error(Info.Env(), "Error", "SSVM-Napi implementation error: unknown integer type");
-        return Napi::Value();
+    case IntKind::SInt32:
+    case IntKind::UInt32:
+    case IntKind::Default:
+      return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
+    case IntKind::SInt64:
+    case IntKind::UInt64:
+      if (auto ResMem = MemInst->getBytes(0, 8)) {
+        uint32_t L = castFromBytesToU32(*ResMem, 0);
+        uint32_t H = castFromBytesToU32(*ResMem, 4);
+        return Napi::Number::New(Info.Env(), castFromU32ToU64(L, H));
+      }
+      [[fallthrough]];
+    default:
+      napi_throw_error(Info.Env(), "Error",
+                       "SSVM-Napi implementation error: unknown integer type");
+      return Napi::Value();
     }
   } else {
     napi_throw_error(Info.Env(), "Error", "SSVM execution failed");
@@ -553,7 +544,8 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName, Options.getWasiCmdArgs(), Options.getWasiEnvs());
+  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
+                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
 
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
@@ -570,18 +562,22 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
   uint32_t ResultDataLen = 0;
   if (auto ResultMem = MemInst->getBytes(ResultMemAddr, 8)) {
     ResultDataAddr = (*ResultMem)[0] | ((*ResultMem)[1] << 8) |
-      ((*ResultMem)[2] << 16) | ((*ResultMem)[3] << 24);
+                     ((*ResultMem)[2] << 16) | ((*ResultMem)[3] << 24);
     ResultDataLen = (*ResultMem)[4] | ((*ResultMem)[5] << 8) |
-      ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
+                    ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
   } else {
-    napi_throw_error(Info.Env(), "Error", "Access to forbidden memory address when retrieving address and length of result data");
+    napi_throw_error(Info.Env(), "Error",
+                     "Access to forbidden memory address when retrieving "
+                     "address and length of result data");
     return Napi::Value();
   }
   if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
   } else {
-    napi_throw_error(Info.Env(), "Error", "Access to forbidden memory address when retrieving result data");
+    napi_throw_error(
+        Info.Env(), "Error",
+        "Access to forbidden memory address when retrieving result data");
     return Napi::Value();
   }
 
@@ -597,7 +593,8 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName, Options.getWasiCmdArgs(), Options.getWasiEnvs());
+  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
+                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
 
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
@@ -615,11 +612,13 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
   /// Retrieve address and length of result data
   if (auto ResultMem = MemInst->getBytes(ResultMemAddr, 8)) {
     ResultDataAddr = (*ResultMem)[0] | ((*ResultMem)[1] << 8) |
-      ((*ResultMem)[2] << 16) | ((*ResultMem)[3] << 24);
+                     ((*ResultMem)[2] << 16) | ((*ResultMem)[3] << 24);
     ResultDataLen = (*ResultMem)[4] | ((*ResultMem)[5] << 8) |
-      ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
+                    ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
   } else {
-    napi_throw_error(Info.Env(), "Error", "Access to forbidden memory address when retrieving address and length of result data");
+    napi_throw_error(Info.Env(), "Error",
+                     "Access to forbidden memory address when retrieving "
+                     "address and length of result data");
     return Napi::Value();
   }
   /// Get result data
@@ -627,12 +626,14 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
   } else {
-    napi_throw_error(Info.Env(), "Error", "Access to forbidden memory address when retrieving result data");
+    napi_throw_error(
+        Info.Env(), "Error",
+        "Access to forbidden memory address when retrieving result data");
     return Napi::Value();
   }
 
   Napi::ArrayBuffer ResultArrayBuffer =
-    Napi::ArrayBuffer::New(Info.Env(), &(ResultData[0]), ResultDataLen);
+      Napi::ArrayBuffer::New(Info.Env(), &(ResultData[0]), ResultDataLen);
   Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
       Info.Env(), ResultDataLen, ResultArrayBuffer, 0, napi_uint8_array);
   WasiMod->getEnv().fini();
@@ -644,25 +645,30 @@ void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
   Napi::HandleScope Scope(Env);
 
   if (BC.isFile() && !(VM->loadWasm(BC.getPath()))) {
-    napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
+    napi_throw_error(Info.Env(), "Error",
+                     "Wasm bytecode/file cannot be loaded correctly.");
     return;
   } else if (BC.isValidData()) {
     if (Options.isAOTMode() && !(VM->loadWasm(BC.getPath()))) {
-      napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
+      napi_throw_error(Info.Env(), "Error",
+                       "Wasm bytecode/file cannot be loaded correctly.");
       return;
     } else if (!Options.isAOTMode() && !(VM->loadWasm(BC.getData()))) {
-      napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
+      napi_throw_error(Info.Env(), "Error",
+                       "Wasm bytecode/file cannot be loaded correctly.");
       return;
     }
   }
 
   if (!(VM->validate())) {
-    napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file failed at validation stage.");
+    napi_throw_error(Info.Env(), "Error",
+                     "Wasm bytecode/file failed at validation stage.");
     return;
   }
 
   if (!(VM->instantiate())) {
-    napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be instantiated.");
+    napi_throw_error(Info.Env(), "Error",
+                     "Wasm bytecode/file cannot be instantiated.");
     return;
   }
 
@@ -677,12 +683,18 @@ Napi::Value SSVMAddon::GetStatistics(const Napi::CallbackInfo &Info) {
   Stat = VM->getStatistics();
   Napi::Object RetStat = Napi::Object::New(Info.Env());
 
-  RetStat.Set("TotalExecutionTime", Napi::Number::New(Info.Env(), Stat.getTotalExecTime()));
-  RetStat.Set("WasmExecutionTime", Napi::Number::New(Info.Env(), Stat.getWasmExecTime()));
-  RetStat.Set("HostFunctionExecutionTime", Napi::Number::New(Info.Env(), Stat.getHostFuncExecTime()));
-  RetStat.Set("InstructionCount", Napi::Number::New(Info.Env(), Stat.getInstrCount()));
-  RetStat.Set("TotalGasCost", Napi::Number::New(Info.Env(), Stat.getTotalGasCost()));
-  RetStat.Set("InstructionPerSecond", Napi::Number::New(Info.Env(), Stat.getInstrPerSecond()));
+  RetStat.Set("TotalExecutionTime",
+              Napi::Number::New(Info.Env(), Stat.getTotalExecTime()));
+  RetStat.Set("WasmExecutionTime",
+              Napi::Number::New(Info.Env(), Stat.getWasmExecTime()));
+  RetStat.Set("HostFunctionExecutionTime",
+              Napi::Number::New(Info.Env(), Stat.getHostFuncExecTime()));
+  RetStat.Set("InstructionCount",
+              Napi::Number::New(Info.Env(), Stat.getInstrCount()));
+  RetStat.Set("TotalGasCost",
+              Napi::Number::New(Info.Env(), Stat.getTotalGasCost()));
+  RetStat.Set("InstructionPerSecond",
+              Napi::Number::New(Info.Env(), Stat.getInstrPerSecond()));
 
   return RetStat;
 }

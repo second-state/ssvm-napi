@@ -19,7 +19,7 @@ bool checkLibCXXVersion() {
   std::string GLibCXXName = "libstdc++.so.6.0.";
   std::string CurrentGLibVer = "unknown";
   bool IsVersionCompatible = false;
-  for (const auto & Entry : std::filesystem::directory_iterator(GLibPath)) {
+  for (const auto &Entry : std::filesystem::directory_iterator(GLibPath)) {
     std::string LibName = Entry.path().filename().string();
     size_t Pos = LibName.find(GLibCXXName);
     if (Pos != std::string::npos) {
@@ -31,13 +31,17 @@ bool checkLibCXXVersion() {
     }
   }
   if (!IsVersionCompatible) {
-    std::cerr << "====================================================================\n"
-      << "Error: libstdc++ version mismatched!\n"
-      << "Your current version is " << CurrentGLibVer << " which is less than libstdc++6.0.28\n"
-      << "SSVM relies on >=libstdc++6.0.28 (GLIBCXX >= 3.4.28)\n"
-      << "Please upgrade the libstdc++6 library.\n\n"
-      << "For more details, refer to our environment set up document: https://www.secondstate.io/articles/setup-rust-nodejs/\n"
-      << "====================================================================\n";
+    std::cerr << "============================================================="
+                 "=======\n"
+              << "Error: libstdc++ version mismatched!\n"
+              << "Your current version is " << CurrentGLibVer
+              << " which is less than libstdc++6.0.28\n"
+              << "SSVM relies on >=libstdc++6.0.28 (GLIBCXX >= 3.4.28)\n"
+              << "Please upgrade the libstdc++6 library.\n\n"
+              << "For more details, refer to our environment set up document: "
+                 "https://www.secondstate.io/articles/setup-rust-nodejs/\n"
+              << "============================================================="
+                 "=======\n";
     return false;
   } else {
     return true;
@@ -45,7 +49,6 @@ bool checkLibCXXVersion() {
 #endif
   return false;
 }
-
 
 } // namespace NAPI
 } // namespace SSVM
