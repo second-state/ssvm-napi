@@ -2,6 +2,7 @@
 #define SSVMADDON_H
 
 #include "bytecode.h"
+#include "options.h"
 
 #include "vm/configure.h"
 #include "vm/vm.h"
@@ -38,13 +39,9 @@ private:
   SSVM::Statistics::Statistics Stat;
   SSVM::Host::WasiModule *WasiMod;
   SSVM::NAPI::Bytecode BC;
+  SSVM::NAPI::SSVMOptions Options;
   bool Inited;
-  bool EnableWasiStart;
-  bool EnableAOT;
-  std::string InputPath;
-  std::vector<uint8_t> InputBytecode;
   std::vector<uint8_t> ResultData;
-  std::vector<std::string> WasiCmdArgs, WasiDirs, WasiEnvs;
 
   /// Setup related functions
   void InitVM(const Napi::CallbackInfo &Info);
