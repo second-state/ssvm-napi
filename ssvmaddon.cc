@@ -82,8 +82,7 @@ inline void dumpToFile(const std::string &SoFilePath, const std::vector<uint8_t>
 SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
   : Napi::ObjectWrap<SSVMAddon>(Info), Configure(nullptr),
   VM(nullptr), MemInst(nullptr),
-  WasiMod(nullptr), Inited(false),
-  EnableWasiStart(false), EnableAOT(false) {
+  WasiMod(nullptr), Inited(false) {
 
     Napi::Env Env = Info.Env();
     Napi::HandleScope Scope(Env);
@@ -103,29 +102,29 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
     if (isWasiOptionsProvided(Info)) {
       // Get a WASI options object
       Napi::Object WasiOptions = Info[1].As<Napi::Object>();
-      if (!parseCmdArgs(WasiCmdArgs, WasiOptions)) {
+      if (!parseCmdArgs(Options.getWasiCmdArgs(), WasiOptions)) {
         napi_throw_error(
             Env,
             "Error",
             "Parse commandline arguments from Wasi options failed.");
         return;
       }
-      if (!parseDirs(WasiDirs, WasiOptions)) {
+      if (!parseDirs(Options.getWasiDirs(), WasiOptions)) {
         napi_throw_error(
             Env,
             "Error",
             "Parse preopens from Wasi options failed.");
         return;
       }
-      if (!parseEnvs(WasiEnvs, WasiOptions)) {
+      if (!parseEnvs(Options.getWasiEnvs(), WasiOptions)) {
         napi_throw_error(
             Env,
             "Error",
             "Parse environment variables from Wasi options failed.");
         return;
       }
-      EnableWasiStart = parseWasiStartFlag(WasiOptions);
-      EnableAOT = parseAOTConfig(WasiOptions);
+      Options.setReactorMode(!parseWasiStartFlag(WasiOptions));
+      Options.setAOTMode(parseAOTConfig(WasiOptions));
     }
 
     // Handle input wasm
@@ -172,15 +171,15 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
       VM->getImportModule(SSVM::VM::Configure::VMType::Wasi));
 
-  if (EnableAOT && !BC.isCompiled()) {
+  if (Options.isAOTMode() && !BC.isCompiled()) {
     Compile();
   }
 
-  if (!EnableWasiStart) {
+  if (Options.isReactorMode()) {
     EnableWasmBindgen(Info);
   }
 
-  if (EnableAOT) {
+  if (Options.isAOTMode()) {
     CallAOTInit(Info);
   }
 }
@@ -433,10 +432,10 @@ Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
   InitVM(Info);
 
   std::string FuncName = "_start";
-  std::vector<std::string> MainCmdArgs = WasiCmdArgs;
+  std::vector<std::string> MainCmdArgs = Options.getWasiCmdArgs();
   MainCmdArgs.erase(MainCmdArgs.begin(), MainCmdArgs.begin()+2);
-  WasiMod->getEnv().init(WasiDirs, FuncName, MainCmdArgs,
-                         WasiEnvs);
+  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName, MainCmdArgs,
+                         Options.getWasiEnvs());
 
   // command mode
   auto Result = VM->runWasmFile(BC.getPath(), "_start");
@@ -477,7 +476,8 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(WasiDirs, FuncName, WasiCmdArgs, WasiEnvs);
+  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
+                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
 
   std::vector<SSVM::ValVariant> Args, Rets;
   PrepareResource(Info, Args);
@@ -497,7 +497,8 @@ Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT) 
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(WasiDirs, FuncName, WasiCmdArgs, WasiEnvs);
+  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
+                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
 
   std::vector<SSVM::ValVariant> Args, Rets;
   PrepareResource(Info, Args, IntT);
@@ -552,7 +553,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(WasiDirs, FuncName, WasiCmdArgs, WasiEnvs);
+  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName, Options.getWasiCmdArgs(), Options.getWasiEnvs());
 
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
@@ -596,7 +597,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(WasiDirs, FuncName, WasiCmdArgs, WasiEnvs);
+  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName, Options.getWasiCmdArgs(), Options.getWasiEnvs());
 
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
@@ -646,10 +647,10 @@ void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
     napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
     return;
   } else if (BC.isValidData()) {
-    if (EnableAOT && !(VM->loadWasm(BC.getPath()))) {
+    if (Options.isAOTMode() && !(VM->loadWasm(BC.getPath()))) {
       napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
       return;
-    } else if (!EnableAOT && !(VM->loadWasm(BC.getData()))) {
+    } else if (!Options.isAOTMode() && !(VM->loadWasm(BC.getData()))) {
       napi_throw_error(Info.Env(), "Error", "Wasm bytecode/file cannot be loaded correctly.");
       return;
     }
