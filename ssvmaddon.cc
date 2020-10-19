@@ -531,10 +531,12 @@ void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
 
-  if (BC.isFile() && !(VM->loadWasm(BC.getPath()))) {
-    napi_throw_error(Info.Env(), "Error",
-                     "Wasm bytecode/file cannot be loaded correctly.");
-    return;
+  if (BC.isFile()) {
+    if (!VM->loadWasm(BC.getPath())) {
+      napi_throw_error(Info.Env(), "Error",
+                       "Wasm bytecode/file cannot be loaded correctly.");
+      return;
+    }
   } else if (BC.isValidData()) {
     if (Options.isAOTMode() && !(VM->loadWasm(BC.getPath()))) {
       napi_throw_error(Info.Env(), "Error",
