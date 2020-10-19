@@ -102,23 +102,10 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
   if (isWasiOptionsProvided(Info)) {
     // Get a WASI options object
     Napi::Object WasiOptions = Info[1].As<Napi::Object>();
-    if (!parseCmdArgs(Options.getWasiCmdArgs(), WasiOptions)) {
-      napi_throw_error(Env, "Error",
-                       "Parse commandline arguments from Wasi options failed.");
+    if (!Options.parse(WasiOptions)) {
+      napi_throw_error(Env, "Error", "Parse Wasi options failed.");
       return;
     }
-    if (!parseDirs(Options.getWasiDirs(), WasiOptions)) {
-      napi_throw_error(Env, "Error",
-                       "Parse preopens from Wasi options failed.");
-      return;
-    }
-    if (!parseEnvs(Options.getWasiEnvs(), WasiOptions)) {
-      napi_throw_error(Env, "Error",
-                       "Parse environment variables from Wasi options failed.");
-      return;
-    }
-    Options.setReactorMode(!parseWasiStartFlag(WasiOptions));
-    Options.setAOTMode(parseAOTConfig(WasiOptions));
   }
 
   // Handle input wasm
@@ -315,106 +302,6 @@ void SSVMAddon::ReleaseResource(const Napi::CallbackInfo &Info,
     napi_throw_error(Info.Env(), "Error", FreeError.c_str());
     return;
   }
-}
-
-bool SSVMAddon::parseWasiStartFlag(const Napi::Object &WasiOptions) {
-  if (WasiOptions.Has("EnableWasiStartFunction") &&
-      WasiOptions.Get("EnableWasiStartFunction").IsBoolean()) {
-    return WasiOptions.Get("EnableWasiStartFunction")
-        .As<Napi::Boolean>()
-        .Value();
-  }
-  return false;
-}
-
-bool SSVMAddon::parseCmdArgs(std::vector<std::string> &CmdArgs,
-                             const Napi::Object &WasiOptions) {
-  CmdArgs.clear();
-  if (WasiOptions.Has("args") && WasiOptions.Get("args").IsArray()) {
-    Napi::Array Args = WasiOptions.Get("args").As<Napi::Array>();
-    for (uint32_t i = 0; i < Args.Length(); i++) {
-      Napi::Value Arg = Args[i];
-      if (Arg.IsNumber()) {
-        CmdArgs.push_back(std::to_string(Arg.As<Napi::Number>().Uint32Value()));
-      } else if (Arg.IsString()) {
-        CmdArgs.push_back(Arg.As<Napi::String>().Utf8Value());
-      } else if (Arg.IsTypedArray() &&
-                 Arg.As<Napi::TypedArray>().TypedArrayType() ==
-                     napi_uint8_array) {
-        Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
-        std::string ArrayArg = std::string(
-            static_cast<char *>(DataBuffer.Data()),
-            static_cast<char *>(DataBuffer.Data()) + DataBuffer.ByteLength());
-        CmdArgs.push_back(ArrayArg);
-      } else {
-        // TODO: support other types
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool SSVMAddon::parseDirs(std::vector<std::string> &Dirs,
-                          const Napi::Object &WasiOptions) {
-  Dirs.clear();
-  if (WasiOptions.Has("preopens") && WasiOptions.Get("preopens").IsObject()) {
-    Napi::Object Preopens = WasiOptions.Get("preopens").As<Napi::Object>();
-    Napi::Array Keys = Preopens.GetPropertyNames();
-    for (uint32_t i = 0; i < Keys.Length(); i++) {
-      // Dir format: <guest_path>:<host_path>
-      Napi::Value Key = Keys[i];
-      if (!Key.IsString()) {
-        // host path must be a string
-        return false;
-      }
-      std::string Dir = Key.As<Napi::String>().Utf8Value();
-      Dir.append(":");
-      Napi::Value Value = Preopens.Get(Key);
-      if (!Value.IsString()) {
-        // guest path must be a string
-        return false;
-      }
-      Dir.append(Value.As<Napi::String>().Utf8Value());
-      Dirs.push_back(Dir);
-    }
-  }
-  return true;
-}
-
-bool SSVMAddon::parseEnvs(std::vector<std::string> &Envs,
-                          const Napi::Object &WasiOptions) {
-  Envs.clear();
-  if (WasiOptions.Has("env") && WasiOptions.Get("env").IsObject()) {
-    Napi::Object Environs = WasiOptions.Get("env").As<Napi::Object>();
-    Napi::Array Keys = Environs.GetPropertyNames();
-    for (uint32_t i = 0; i < Keys.Length(); i++) {
-      // Environ format: <KEY>=<VALUE>
-      Napi::Value Key = Keys[i];
-      if (!Key.IsString()) {
-        // key must be a string
-        return false;
-      }
-      std::string Env = Key.As<Napi::String>().Utf8Value();
-      Env.append("=");
-      Napi::Value Value = Environs.Get(Key);
-      if (!Value.IsString()) {
-        // value must be a string
-        return false;
-      }
-      Env.append(Value.As<Napi::String>().Utf8Value());
-      Envs.push_back(Env);
-    }
-  }
-  return true;
-}
-
-bool SSVMAddon::parseAOTConfig(const Napi::Object &WasiOptions) {
-  if (WasiOptions.Has("EnableAOT") &&
-      WasiOptions.Get("EnableAOT").IsBoolean()) {
-    return WasiOptions.Get("EnableAOT").As<Napi::Boolean>().Value();
-  }
-  return false;
 }
 
 Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {

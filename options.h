@@ -1,5 +1,6 @@
 #pragma once
 
+#include <napi.h>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@ public:
   std::vector<std::string> &getWasiDirs() { return WasiDirs; }
   const std::vector<std::string> &getWasiEnvs() const { return WasiEnvs; }
   std::vector<std::string> &getWasiEnvs() { return WasiEnvs; }
+  bool parse(const Napi::Object &Options);
 };
 
 } // namespace NAPI
