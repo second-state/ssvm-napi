@@ -45,12 +45,6 @@ private:
 
   /// Setup related functions
   void InitVM(const Napi::CallbackInfo &Info);
-  /// Prepare wasi module from given wasi options
-  bool parseWasiStartFlag(const Napi::Object &Options);
-  bool parseAOTConfig(const Napi::Object &Options);
-  bool parseCmdArgs(std::vector<std::string> &CmdArgs, const Napi::Object &Options);
-  bool parseDirs(std::vector<std::string> &Dirs, const Napi::Object &Options);
-  bool parseEnvs(std::vector<std::string> &Envs, const Napi::Object &Options);
   /// WasmBindgen related functions
   void EnableWasmBindgen(const Napi::CallbackInfo &Info);
   void PrepareResource(const Napi::CallbackInfo &Info,
