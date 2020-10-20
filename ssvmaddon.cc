@@ -197,6 +197,10 @@ bool SSVMAddon::Compile() {
     }
 
     SSVM::AOT::Compiler Compiler;
+    if (Options.isMeasuring()) {
+      Compiler.setInstructionCounting();
+      Compiler.setGasMeasuring();
+    }
     if (auto Res = Compiler.compile(Data, *Module, OutputPath); !Res) {
       const auto Err = static_cast<uint32_t>(Res.error());
       std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
@@ -569,21 +573,26 @@ void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
 }
 
 Napi::Value SSVMAddon::GetStatistics(const Napi::CallbackInfo &Info) {
-  Stat = VM->getStatistics();
   Napi::Object RetStat = Napi::Object::New(Info.Env());
+  if (!Options.isMeasuring()) {
+    RetStat.Set("Measure", Napi::Boolean::New(Info.Env(), false));
+  } else {
+    Stat = VM->getStatistics();
 
-  RetStat.Set("TotalExecutionTime",
-              Napi::Number::New(Info.Env(), Stat.getTotalExecTime()));
-  RetStat.Set("WasmExecutionTime",
-              Napi::Number::New(Info.Env(), Stat.getWasmExecTime()));
-  RetStat.Set("HostFunctionExecutionTime",
-              Napi::Number::New(Info.Env(), Stat.getHostFuncExecTime()));
-  RetStat.Set("InstructionCount",
-              Napi::Number::New(Info.Env(), Stat.getInstrCount()));
-  RetStat.Set("TotalGasCost",
-              Napi::Number::New(Info.Env(), Stat.getTotalGasCost()));
-  RetStat.Set("InstructionPerSecond",
-              Napi::Number::New(Info.Env(), Stat.getInstrPerSecond()));
+    RetStat.Set("Measure", Napi::Boolean::New(Info.Env(), true));
+    RetStat.Set("TotalExecutionTime",
+                Napi::Number::New(Info.Env(), Stat.getTotalExecTime()));
+    RetStat.Set("WasmExecutionTime",
+                Napi::Number::New(Info.Env(), Stat.getWasmExecTime()));
+    RetStat.Set("HostFunctionExecutionTime",
+                Napi::Number::New(Info.Env(), Stat.getHostFuncExecTime()));
+    RetStat.Set("InstructionCount",
+                Napi::Number::New(Info.Env(), Stat.getInstrCount()));
+    RetStat.Set("TotalGasCost",
+                Napi::Number::New(Info.Env(), Stat.getTotalGasCost()));
+    RetStat.Set("InstructionPerSecond",
+                Napi::Number::New(Info.Env(), Stat.getInstrPerSecond()));
+  }
 
   return RetStat;
 }
