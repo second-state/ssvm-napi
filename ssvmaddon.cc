@@ -130,8 +130,10 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
       VM->getImportModule(SSVM::VM::Configure::VMType::Wasi));
 
+  /// Origin input can be Bytecode or FilePath
   if (Options.isAOTMode() && !BC.isCompiled()) {
     Compile();
+    /// After Compile(), {Bytecode, FilePath} -> {FilePath}
   }
 
   if (Options.isReactorMode()) {
@@ -146,6 +148,7 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
 bool SSVMAddon::Compile() {
   SSVM::Loader::Loader Loader;
 
+  /// BC can be Bytecode or FilePath
   if (BC.isFile()) {
     /// File mode
     /// We have to load bytecode from given file first.
@@ -167,7 +170,7 @@ bool SSVMAddon::Compile() {
   if (!Cache.isCached()) {
     /// Cache not found. Compile wasm bytecode
     std::unique_ptr<SSVM::AST::Module> Module;
-    if (auto Res = Loader.parseModule(Data)) {
+    if (auto Res = Loader.parseModule(BC.getData())) {
       Module = std::move(*Res);
     } else {
       const auto Err = static_cast<uint32_t>(Res.error());
@@ -180,13 +183,14 @@ bool SSVMAddon::Compile() {
       Compiler.setInstructionCounting();
       Compiler.setGasMeasuring();
     }
-    if (auto Res = Compiler.compile(Data, *Module, Cache.getPath()); !Res) {
+    if (auto Res = Compiler.compile(BC.getData(), *Module, Cache.getPath()); !Res) {
       const auto Err = static_cast<uint32_t>(Res.error());
       std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
       return false;
     }
   }
 
+  /// After compiled Bytecode, the output will be written to a FilePath.
   BC.setPath(Cache.getPath());
   return true;
 }
@@ -441,6 +445,8 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
                      "address and length of result data");
     return Napi::Value();
   }
+
+  std::vector<uint8_t> ResultData;
   if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
@@ -492,6 +498,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     return Napi::Value();
   }
   /// Get result data
+  std::vector<uint8_t> ResultData;
   if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);

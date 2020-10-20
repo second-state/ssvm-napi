@@ -43,7 +43,6 @@ private:
   SSVM::NAPI::SSVMOptions Options;
   SSVM::NAPI::SSVMCache Cache;
   bool Inited;
-  std::vector<uint8_t> ResultData;
 
   /// Setup related functions
   void InitVM(const Napi::CallbackInfo &Info);
