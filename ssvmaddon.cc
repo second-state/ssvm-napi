@@ -7,7 +7,6 @@
 #include "support/span.h"
 #include "utils.h"
 
-#include <fstream> // std::ifstream, std::ofstream
 #include <limits>
 
 #include <boost/functional/hash.hpp>
@@ -60,24 +59,6 @@ inline uint32_t castFromBytesToU32(const SSVM::Span<SSVM::Byte> &Bytes,
 
 inline uint64_t castFromU32ToU64(uint32_t L, uint32_t H) {
   return static_cast<uint64_t>(L) | (static_cast<uint64_t>(H) << 32);
-}
-
-inline bool isCached(std::string &SoFile) {
-  std::ifstream File(SoFile.c_str());
-  return File.good();
-}
-
-inline std::string getSoFileName(size_t CodeHash) {
-  return std::string("/tmp/ssvm.tmp.") + std::to_string(CodeHash) +
-         std::string(".so");
-}
-
-inline void dumpToFile(const std::string &SoFilePath,
-                       const std::vector<uint8_t> &Bytecode) {
-  std::ofstream SoFile(SoFilePath);
-  std::ostream_iterator<uint8_t> OutIter(SoFile);
-  std::copy(Bytecode.begin(), Bytecode.end(), OutIter);
-  SoFile.close();
 }
 
 } // namespace
@@ -154,7 +135,7 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   }
 
   if (Options.isReactorMode()) {
-    EnableWasmBindgen(Info);
+    LoadWasm(Info);
   }
 
   if (Options.isAOTMode()) {
@@ -179,13 +160,11 @@ bool SSVMAddon::Compile() {
     }
   }
 
-  const std::vector<SSVM::Byte> &Data = BC.getData();
-  /// Check hash.
+  /// Now, BC must be Bytecode only
+  /// Calculate hash and path.
+  Cache.init(BC.getData());
   /// If the compiled bytecode existed, return directly.
-  std::size_t CodeHash = boost::hash_range(Data.begin(), Data.end());
-  std::string OutputPath = getSoFileName(CodeHash);
-
-  if (!isCached(OutputPath)) {
+  if (!Cache.isCached()) {
     /// Cache not found. Compile wasm bytecode
     std::unique_ptr<SSVM::AST::Module> Module;
     if (auto Res = Loader.parseModule(Data)) {
@@ -201,14 +180,14 @@ bool SSVMAddon::Compile() {
       Compiler.setInstructionCounting();
       Compiler.setGasMeasuring();
     }
-    if (auto Res = Compiler.compile(Data, *Module, OutputPath); !Res) {
+    if (auto Res = Compiler.compile(Data, *Module, Cache.getPath()); !Res) {
       const auto Err = static_cast<uint32_t>(Res.error());
       std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
       return false;
     }
   }
 
-  BC.setPath(OutputPath);
+  BC.setPath(Cache.getPath());
   return true;
 }
 
@@ -531,7 +510,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
   return ResultTypedArray;
 }
 
-void SSVMAddon::EnableWasmBindgen(const Napi::CallbackInfo &Info) {
+void SSVMAddon::LoadWasm(const Napi::CallbackInfo &Info) {
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
 
