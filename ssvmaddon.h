@@ -2,6 +2,7 @@
 #define SSVMADDON_H
 
 #include "bytecode.h"
+#include "cache.h"
 #include "options.h"
 
 #include "vm/configure.h"
@@ -40,13 +41,14 @@ private:
   SSVM::Host::WasiModule *WasiMod;
   SSVM::NAPI::Bytecode BC;
   SSVM::NAPI::SSVMOptions Options;
+  SSVM::NAPI::SSVMCache Cache;
   bool Inited;
   std::vector<uint8_t> ResultData;
 
   /// Setup related functions
   void InitVM(const Napi::CallbackInfo &Info);
+  void LoadWasm(const Napi::CallbackInfo &Info);
   /// WasmBindgen related functions
-  void EnableWasmBindgen(const Napi::CallbackInfo &Info);
   void PrepareResource(const Napi::CallbackInfo &Info,
       std::vector<SSVM::ValVariant> &Args, IntKind IntT);
   void PrepareResource(const Napi::CallbackInfo &Info,
