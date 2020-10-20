@@ -139,7 +139,7 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   }
 
   if (Options.isAOTMode()) {
-    CallAOTInit(Info);
+    InitReactor(Info);
   }
 }
 
@@ -308,7 +308,7 @@ Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
   return Napi::Number::New(Info.Env(), ErrCode);
 }
 
-void SSVMAddon::CallAOTInit(const Napi::CallbackInfo &Info) {
+void SSVMAddon::InitReactor(const Napi::CallbackInfo &Info) {
   using namespace std::literals::string_literals;
   const auto InitFunc = "_initialize"s;
 
