@@ -3,6 +3,7 @@
 
 #include "bytecode.h"
 #include "cache.h"
+#include "errors.h"
 #include "options.h"
 
 #include "vm/configure.h"
@@ -33,6 +34,7 @@ public:
   };
 
 private:
+  using ErrorType = SSVM::NAPI::ErrorType;
   static Napi::FunctionReference Constructor;
   SSVM::VM::Configure *Configure;
   SSVM::VM::VM *VM;
