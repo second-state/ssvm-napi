@@ -100,6 +100,14 @@ bool parseAOTConfig(const Napi::Object &Options) {
   return false;
 }
 
+bool parseMeasure(const Napi::Object &Options) {
+  if (Options.Has("EnableMeasurement") &&
+      Options.Get("EnableMeasurement").IsBoolean()) {
+    return Options.Get("EnableMeasurement").As<Napi::Boolean>().Value();
+  }
+  return false;
+}
+
 } // namespace
 
 bool SSVMOptions::parse(const Napi::Object &Options) {
@@ -110,6 +118,7 @@ bool SSVMOptions::parse(const Napi::Object &Options) {
   }
   setReactorMode(!parseWasiStartFlag(Options));
   setAOTMode(parseAOTConfig(Options));
+  setMeasure(parseMeasure(Options));
   return true;
 }
 

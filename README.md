@@ -87,18 +87,20 @@ Please refer to [Tutorial: A standalone wasm32-wasi application](./Tutorial_Wasm
 
 ## APIs
 
-### Constructor: `ssvm.VM(wasm, wasi_options) -> vm_instance`
-* Create a ssvm instance by given wasm file and wasi options.
+### Constructor: `ssvm.VM(wasm, ssvm_options) -> vm_instance`
+* Create a ssvm instance by given wasm file and options.
 * Arguments:
 	* `wasm`: Input wasm file, can be the following three formats:
 		1. Wasm file path (String, e.g. `/tmp/hello.wasm`)
 		2. Wasm bytecode format which is the content of a wasm binary file (Uint8Array)
-	* `wasi_options`: A wasi options object for setup the execution environment.
-		* `wasi_options` <JS Object>
+	* `options`: An options object for setup the SSVM execution environment.
+		* `options` <JS Object>
 			* `args` <JS Array>: An array of strings that Wasm application will get as function arguments. Default: `[]`
 			* `env` <JS Object>: An object like `process.env` that Wasm application will get as its environment variables. Default: `{}`
 			* `preopens` <JS Object>: An object which maps '<guest_path>:<host_path>'. E.g. `{'/sandbox': '/some/real/path/that/wasm/can/access'}` Default: `{}`
-	* `EnableWasiStartFunction`: This option will disable wasm-bindgen mode and prepare the working environment for standalone wasm program. If you want to run an appliation with `main()`, you should set this to `true`. Default: `false`.
+			* `EnableWasiStartFunction`: This option will disable wasm-bindgen mode and prepare the working environment for standalone wasm program. If you want to run an appliation with `main()`, you should set this to `true`. Default: `false`.
+			* `EnableAOT`: This option will enable ssvm aot mode. Default: `false`.
+			* `EnableMeasurement`: This option will enable measurement but decrease its performance. Default: `false`.
 * Return value:
 	* `vm_instance`: A ssvm instance.
 
@@ -124,7 +126,40 @@ Run("Print", 1234);
 ```
 
 #### `RunInt(function_name, args...) -> Integer`
-* Emit `function_name` with `args` and expect the return value type is `Integer`.
+* Emit `function_name` with `args` and expect the return value type is `Integer` (Int32).
+* Arguments:
+	* `function_name` <String>: The function name which users want to emit.
+	* `args` <Integer/String/Uint8Array>\*: The function arguments. The delimiter is `,`
+* Example:
+```javascript
+let result = RunInt("Add", 1, 2);
+// result should be 3
+```
+
+#### `RunUInt(function_name, args...) -> Integer`
+* Emit `function_name` with `args` and expect the return value type is `Integer` (UInt32).
+* Arguments:
+	* `function_name` <String>: The function name which users want to emit.
+	* `args` <Integer/String/Uint8Array>\*: The function arguments. The delimiter is `,`
+* Example:
+```javascript
+let result = RunInt("Add", 1, 2);
+// result should be 3
+```
+
+#### `RunInt64(function_name, args...) -> BigInt`
+* Emit `function_name` with `args` and expect the return value type is `BigInt` (Int64).
+* Arguments:
+	* `function_name` <String>: The function name which users want to emit.
+	* `args` <Integer/String/Uint8Array>\*: The function arguments. The delimiter is `,`
+* Example:
+```javascript
+let result = RunInt("Add", 1, 2);
+// result should be 3
+```
+
+#### `RunUInt64(function_name, args...) -> BigInt`
+* Emit `function_name` with `args` and expect the return value type is `BigInt` (UInt64).
 * Arguments:
 	* `function_name` <String>: The function name which users want to emit.
 	* `args` <Integer/String/Uint8Array>\*: The function arguments. The delimiter is `,`
@@ -145,7 +180,6 @@ let result = RunString("PrintMathScore", "Amy", 98);
 // result: "Amy’s math score is 98".
 ```
 
-
 #### `RunUint8Array(function_name, args...) -> Uint8Array`
 * Emit `function_name` with `args` and expect the return value type is `Uint8Array`.
 * Arguments:
@@ -158,8 +192,10 @@ let result = RunUint8Array("Hash", "Hello, world!");
 ```
 
 #### `GetStatistics() -> Object`
+* This is valid only when `"EnableMeasurement"` is set to `true`.
 * Get the statistics of execution runtime.
 * Return Value `Statistics` <Object>
+	* `Measure` -> <Boolean>: To show if the measurement is enabled or not.
 	* `TotalExecutionTime` -> <Integer>: Total execution time (Wasm exeuction time + Host function execution time) in `us` unit.
 	* `WasmExecutionTime` -> <Integer>: Wasm instructions execution time in `us` unit.
 	* `HostFunctionExecutionTime` -> <Integer>: Host functions (e.g. eei or wasi functions) execution time in `us` unit.
@@ -171,13 +207,22 @@ let result = RunInt("Add", 1, 2);
 // result should be 3
 let stat = GetStatistics();
 /*
+If the `EnableMeasurement: true`:
+
 stat = Statistics:  {
+  Measure: true,
   TotalExecutionTime: 1512,
   WasmExecutionTime: 1481,
   HostFunctionExecutionTime: 31,
   InstructionCount: 27972,
   TotalGasCost: 27972,
   InstructionPerSecond: 18887238.35246455
+}
+
+Else:
+
+stat = Statistics:  {
+  Measure: false
 }
 */
 ```
