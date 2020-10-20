@@ -68,7 +68,7 @@ private:
   Napi::Value GetStatistics(const Napi::CallbackInfo &Info);
   /// AoT functions
   bool Compile();
-  void CallAOTInit(const Napi::CallbackInfo &Info);
+  void InitReactor(const Napi::CallbackInfo &Info);
 };
 
 #endif
