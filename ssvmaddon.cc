@@ -144,10 +144,6 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   if (Options.isReactorMode()) {
     LoadWasm(Info);
   }
-
-  if (Options.isAOTMode()) {
-    InitReactor(Info);
-  }
 }
 
 bool SSVMAddon::Compile() {
@@ -305,6 +301,10 @@ Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
   WasiMod->getEnv().init(Options.getWasiDirs(), FuncName, MainCmdArgs,
                          Options.getWasiEnvs());
 
+  if (Options.isAOTMode()) {
+    InitReactor(Info);
+  }
+
   // command mode
   auto Result = VM->runWasmFile(BC.getPath(), "_start");
   if (!Result) {
@@ -350,6 +350,10 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
                          Options.getWasiCmdArgs(), Options.getWasiEnvs());
 
+  if (Options.isAOTMode()) {
+    InitReactor(Info);
+  }
+
   std::vector<SSVM::ValVariant> Args, Rets;
   PrepareResource(Info, Args);
   auto Res = VM->execute(FuncName, Args);
@@ -373,6 +377,10 @@ Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info,
 
   WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
                          Options.getWasiCmdArgs(), Options.getWasiEnvs());
+
+  if (Options.isAOTMode()) {
+    InitReactor(Info);
+  }
 
   std::vector<SSVM::ValVariant> Args, Rets;
   PrepareResource(Info, Args, IntT);
@@ -434,6 +442,10 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
   WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
                          Options.getWasiCmdArgs(), Options.getWasiEnvs());
 
+  if (Options.isAOTMode()) {
+    InitReactor(Info);
+  }
+
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
   Args.emplace_back(ResultMemAddr);
@@ -486,6 +498,10 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
 
   WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
                          Options.getWasiCmdArgs(), Options.getWasiEnvs());
+
+  if (Options.isAOTMode()) {
+    InitReactor(Info);
+  }
 
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
