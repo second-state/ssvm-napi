@@ -3,11 +3,11 @@ name: Main Workflow
 on:
   push:
     branches:
-      - master
-      - '**/test*'
+    - master
+    - '**/test**'
   pull_request:
     branches:
-      - master
+    - master
 
 jobs:
   build_and_test:
@@ -17,10 +17,10 @@ jobs:
       matrix:
         cc: ['clang', 'gcc']
         include:
-          - cc: 'clang'
-            cxx: 'clang++'
-          - cc: 'gcc'
-            cxx: 'g++'
+        - cc: 'clang'
+          cxx: 'clang++'
+        - cc: 'gcc'
+          cxx: 'g++'
 
     steps:
     - uses: actions/checkout@v2
