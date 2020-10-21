@@ -15,6 +15,9 @@ jobs:
       matrix:
         node-version: [10.x, 12.x, 14.x]
         ssvm-options: ['']
+        include:
+        - node-version: '14.x'
+          ssvm-options: '--enable-aot'
 
     steps:
     # MAGIC: Checkout wasm-learning at $GITHUB_WORKSPACE so that node
@@ -65,3 +68,19 @@ jobs:
         node node/app.js
         ssvmup clean
       working-directory: nodejs/wasi
+
+    - name: Test RSA ${{ matrix.ssvm-options }}
+      run: |
+        ssvmup build ${{ matrix.ssvm-options }}
+        node node/app.js
+        ssvmup clean
+      working-directory: nodejs/rsa_example
+
+    - name: Test KMeans ${{ matrix.ssvm-options }}
+      run: |
+        ssvmup build ${{ matrix.ssvm-options }}
+        cd node
+        node app.js
+        cd -
+        ssvmup clean
+      working-directory: nodejs/kmeans
