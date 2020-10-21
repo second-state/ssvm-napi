@@ -44,6 +44,7 @@ private:
   SSVM::NAPI::Bytecode BC;
   SSVM::NAPI::SSVMOptions Options;
   SSVM::NAPI::SSVMCache Cache;
+  std::vector<uint8_t> ResultData;
   bool Inited;
 
   /// Setup related functions

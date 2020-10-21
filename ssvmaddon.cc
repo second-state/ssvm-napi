@@ -473,7 +473,6 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
     return Napi::Value();
   }
 
-  std::vector<uint8_t> ResultData;
   if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
@@ -531,7 +530,6 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     return Napi::Value();
   }
   /// Get result data
-  std::vector<uint8_t> ResultData;
   if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
@@ -551,22 +549,24 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
 }
 
 void SSVMAddon::LoadWasm(const Napi::CallbackInfo &Info) {
+  Napi::Env Env = Info.Env();
+  Napi::HandleScope Scope(Env);
   if (BC.isFile()) {
     if (!VM->loadWasm(BC.getPath())) {
       napi_throw_error(
-          Info.Env(), "Error",
+          Env, "Error",
           SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
       return;
     }
   } else if (BC.isValidData()) {
     if (Options.isAOTMode() && !(VM->loadWasm(BC.getPath()))) {
       napi_throw_error(
-          Info.Env(), "Error",
+          Env, "Error",
           SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
       return;
     } else if (!Options.isAOTMode() && !(VM->loadWasm(BC.getData()))) {
       napi_throw_error(
-          Info.Env(), "Error",
+          Env, "Error",
           SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
       return;
     }
@@ -574,14 +574,14 @@ void SSVMAddon::LoadWasm(const Napi::CallbackInfo &Info) {
 
   if (!(VM->validate())) {
     napi_throw_error(
-        Info.Env(), "Error",
+        Env, "Error",
         SSVM::NAPI::ErrorMsgs.at(ErrorType::ValidateWasmFailed).c_str());
     return;
   }
 
   if (!(VM->instantiate())) {
     napi_throw_error(
-        Info.Env(), "Error",
+        Env, "Error",
         SSVM::NAPI::ErrorMsgs.at(ErrorType::InstantiateWasmFailed).c_str());
     return;
   }
