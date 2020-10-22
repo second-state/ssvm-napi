@@ -1,12 +1,12 @@
 [package]
-name = "integers"
+name = "ssvm-napi-tests"
 version = "0.1.0"
 authors = ["ubuntu"]
 edition = "2018"
 
 [lib]
 name = "integers_lib"
-path = "src/lib.rs"
+path = "rs/integers_lib.rs"
 crate-type =["cdylib"]
 
 [dependencies]

@@ -4,5 +4,5 @@ ssvmup build
 cd pkg
 npm install ../..
 cd -
-mocha node/app.js
+mocha js
 ssvmup clean
