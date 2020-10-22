@@ -21,7 +21,8 @@ Napi::Object SSVMAddon::Init(Napi::Env Env, Napi::Object Exports) {
   Napi::Function Func =
       DefineClass(Env, "VM",
                   {InstanceMethod("GetStatistics", &SSVMAddon::GetStatistics),
-                   InstanceMethod("Start", &SSVMAddon::Start),
+                   InstanceMethod("Start", &SSVMAddon::RunStart),
+                   InstanceMethod("Compile", &SSVMAddon::RunCompile),
                    InstanceMethod("Run", &SSVMAddon::Run),
                    InstanceMethod("RunInt", &SSVMAddon::RunInt),
                    InstanceMethod("RunUInt", &SSVMAddon::RunUInt),
@@ -292,7 +293,7 @@ void SSVMAddon::ReleaseResource(const Napi::CallbackInfo &Info,
   }
 }
 
-Napi::Value SSVMAddon::Start(const Napi::CallbackInfo &Info) {
+Napi::Value SSVMAddon::RunStart(const Napi::CallbackInfo &Info) {
   InitVM(Info);
 
   std::string FuncName = "_start";
@@ -365,6 +366,12 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   }
 
   WasiMod->getEnv().fini();
+}
+
+Napi::Value SSVMAddon::RunCompile(const Napi::CallbackInfo &Info)
+{
+  // TODO
+  return Napi::Value::From(Info.Env(), false);
 }
 
 Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info,
