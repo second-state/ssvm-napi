@@ -32,8 +32,6 @@ public:
   bool isMachO() const noexcept;
   bool isCompiled() const noexcept;
   bool isValidData() const noexcept;
-  bool isBytecodeFormat() const noexcept;
-  bool isPathFormat() const noexcept;
 };
 
 } // namespace NAPI

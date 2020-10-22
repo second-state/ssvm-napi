@@ -62,6 +62,12 @@ inline uint64_t castFromU32ToU64(uint32_t L, uint32_t H) {
   return static_cast<uint64_t>(L) | (static_cast<uint64_t>(H) << 32);
 }
 
+inline bool endsWith(const std::string &S, const std::string &Suffix) {
+  return S.length() >= Suffix.length() &&
+         S.compare(S.length() - Suffix.length(), std::string::npos,
+                   Suffix) == 0;
+}
+
 } // namespace
 
 SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
@@ -132,26 +138,41 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   VM = new SSVM::VM::VM(*Configure);
 
   SSVM::Log::setErrorLoggingLevel();
+}
 
+void SSVMAddon::InitWasi(const Napi::CallbackInfo &Info,
+                         const std::string &FuncName) {
   WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
       VM->getImportModule(SSVM::VM::Configure::VMType::Wasi));
 
   /// Origin input can be Bytecode or FilePath
-  if (Options.isAOTMode() && !BC.isCompiled()) {
-    Compile();
+  if (Options.isAOTMode()) {
+    if (BC.isFile() && endsWith(BC.getPath(), ".so")) {
+      // BC is already the compiled filename, do nothing
+    }
+    else if (!BC.isCompiled()) {
+      Compile();
+    }
     /// After Compile(), {Bytecode, FilePath} -> {FilePath}
   }
 
   if (Options.isReactorMode()) {
     LoadWasm(Info);
   }
+
+  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
+                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
+
+  if (Options.isAOTMode()) {
+    InitReactor(Info);
+  }
 }
 
 bool SSVMAddon::Compile() {
-  SSVM::Loader::Loader Loader;
-
   /// BC can be Bytecode or FilePath
   if (BC.isFile()) {
+    SSVM::Loader::Loader Loader;
+
     /// File mode
     /// We have to load bytecode from given file first.
     std::filesystem::path P =
@@ -168,32 +189,41 @@ bool SSVMAddon::Compile() {
   /// Now, BC must be Bytecode only
   /// Calculate hash and path.
   Cache.init(BC.getData());
+
   /// If the compiled bytecode existed, return directly.
   if (!Cache.isCached()) {
     /// Cache not found. Compile wasm bytecode
-    std::unique_ptr<SSVM::AST::Module> Module;
-    if (auto Res = Loader.parseModule(BC.getData())) {
-      Module = std::move(*Res);
-    } else {
-      const auto Err = static_cast<uint32_t>(Res.error());
-      std::cerr << "SSVM::NAPI::AOT::Parse module failed. Error code: " << Err;
-      return false;
-    }
-
-    SSVM::AOT::Compiler Compiler;
-    if (Options.isMeasuring()) {
-      Compiler.setInstructionCounting();
-      Compiler.setGasMeasuring();
-    }
-    if (auto Res = Compiler.compile(BC.getData(), *Module, Cache.getPath()); !Res) {
-      const auto Err = static_cast<uint32_t>(Res.error());
-      std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
+    if (auto Res = CompileBytecodeTo(Cache.getPath()); !Res) {
       return false;
     }
   }
 
   /// After compiled Bytecode, the output will be written to a FilePath.
   BC.setPath(Cache.getPath());
+  return true;
+}
+
+bool SSVMAddon::CompileBytecodeTo(const std::string &Path) {
+  SSVM::Loader::Loader Loader;
+  std::unique_ptr<SSVM::AST::Module> Module;
+  if (auto Res = Loader.parseModule(BC.getData())) {
+    Module = std::move(*Res);
+  } else {
+    const auto Err = static_cast<uint32_t>(Res.error());
+    std::cerr << "SSVM::NAPI::AOT::Parse module failed. Error code: " << Err;
+    return false;
+  }
+
+  SSVM::AOT::Compiler Compiler;
+  if (Options.isMeasuring()) {
+    Compiler.setInstructionCounting();
+    Compiler.setGasMeasuring();
+  }
+  if (auto Res = Compiler.compile(BC.getData(), *Module, Path); !Res) {
+    const auto Err = static_cast<uint32_t>(Res.error());
+    std::cerr << "SSVM::NAPI::AOT::Compile failed. Error code: " << Err;
+    return false;
+  }
   return true;
 }
 
@@ -297,14 +327,10 @@ Napi::Value SSVMAddon::RunStart(const Napi::CallbackInfo &Info) {
   InitVM(Info);
 
   std::string FuncName = "_start";
-  std::vector<std::string> MainCmdArgs = Options.getWasiCmdArgs();
-  MainCmdArgs.erase(MainCmdArgs.begin(), MainCmdArgs.begin() + 2);
-  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName, MainCmdArgs,
-                         Options.getWasiEnvs());
+  const std::vector<std::string> &WasiCmdArgs = Options.getWasiCmdArgs();
+  Options.getWasiCmdArgs().erase(WasiCmdArgs.begin(), WasiCmdArgs.begin() + 2);
 
-  if (Options.isAOTMode()) {
-    InitReactor(Info);
-  }
+  InitWasi(Info, FuncName);
 
   // command mode
   auto Result = VM->runWasmFile(BC.getPath(), "_start");
@@ -348,12 +374,7 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
-                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
-
-  if (Options.isAOTMode()) {
-    InitReactor(Info);
-  }
+  InitWasi(Info, FuncName);
 
   std::vector<SSVM::ValVariant> Args, Rets;
   PrepareResource(Info, Args);
@@ -370,8 +391,14 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
 
 Napi::Value SSVMAddon::RunCompile(const Napi::CallbackInfo &Info)
 {
-  // TODO
-  return Napi::Value::From(Info.Env(), false);
+  InitVM(Info);
+
+  std::string FileName;
+  if (Info.Length() > 0) {
+    FileName = Info[0].As<Napi::String>().Utf8Value();
+  }
+
+  return Napi::Value::From(Info.Env(), CompileBytecodeTo(FileName));
 }
 
 Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info,
@@ -382,12 +409,7 @@ Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info,
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
-                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
-
-  if (Options.isAOTMode()) {
-    InitReactor(Info);
-  }
+  InitWasi(Info, FuncName);
 
   std::vector<SSVM::ValVariant> Args, Rets;
   PrepareResource(Info, Args, IntT);
@@ -446,12 +468,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
-                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
-
-  if (Options.isAOTMode()) {
-    InitReactor(Info);
-  }
+  InitWasi(Info, FuncName);
 
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;
@@ -502,12 +519,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     FuncName = Info[0].As<Napi::String>().Utf8Value();
   }
 
-  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
-                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
-
-  if (Options.isAOTMode()) {
-    InitReactor(Info);
-  }
+  InitWasi(Info, FuncName);
 
   uint32_t ResultMemAddr = 8;
   std::vector<SSVM::ValVariant> Args, Rets;

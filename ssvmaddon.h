@@ -49,6 +49,7 @@ private:
 
   /// Setup related functions
   void InitVM(const Napi::CallbackInfo &Info);
+  void InitWasi(const Napi::CallbackInfo &Info, const std::string &FuncName);
   void LoadWasm(const Napi::CallbackInfo &Info);
   /// WasmBindgen related functions
   void PrepareResource(const Napi::CallbackInfo &Info,
@@ -71,6 +72,7 @@ private:
   Napi::Value GetStatistics(const Napi::CallbackInfo &Info);
   /// AoT functions
   bool Compile();
+  bool CompileBytecodeTo(const std::string &Path);
   void InitReactor(const Napi::CallbackInfo &Info);
 };
 
