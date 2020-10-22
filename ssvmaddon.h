@@ -58,6 +58,8 @@ private:
   void ReleaseResource(const Napi::CallbackInfo &Info, const uint32_t Offset, const uint32_t Size);
   /// Run functions
   void Run(const Napi::CallbackInfo &Info);
+  Napi::Value RunStart(const Napi::CallbackInfo &Info);
+  Napi::Value RunCompile(const Napi::CallbackInfo &Info);
   Napi::Value RunIntImpl(const Napi::CallbackInfo &Info, IntKind IntT);
   Napi::Value RunInt(const Napi::CallbackInfo &Info);
   Napi::Value RunUInt(const Napi::CallbackInfo &Info);
@@ -65,7 +67,6 @@ private:
   Napi::Value RunUInt64(const Napi::CallbackInfo &Info);
   Napi::Value RunString(const Napi::CallbackInfo &Info);
   Napi::Value RunUint8Array(const Napi::CallbackInfo &Info);
-  Napi::Value Start(const Napi::CallbackInfo &Info);
   /// Statistics
   Napi::Value GetStatistics(const Napi::CallbackInfo &Info);
   /// AoT functions
