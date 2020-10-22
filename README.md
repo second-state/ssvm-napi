@@ -192,7 +192,7 @@ let result = RunUint8Array("Hash", "Hello, world!");
 ```
 
 #### `GetStatistics() -> Object`
-* This is valid only when `"EnableMeasurement"` is set to `true`.
+* If you want to enable measurement, set the option `EnableMeasurement` to `true`. But please notice that enabling measurement will significantly affect performance.
 * Get the statistics of execution runtime.
 * Return Value `Statistics` <Object>
 	* `Measure` -> <Boolean>: To show if the measurement is enabled or not.
