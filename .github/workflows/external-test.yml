@@ -70,6 +70,7 @@ jobs:
       working-directory: nodejs/wasi
 
     - name: Test RSA ${{ matrix.ssvm-options }}
+      if: ${{ contains(matrix.ssvm-options, 'aot') }}
       run: |
         ssvmup build ${{ matrix.ssvm-options }}
         node node/app.js
@@ -77,6 +78,7 @@ jobs:
       working-directory: nodejs/rsa_example
 
     - name: Test KMeans ${{ matrix.ssvm-options }}
+      if: ${{ contains(matrix.ssvm-options, 'aot') }}
       run: |
         ssvmup build ${{ matrix.ssvm-options }}
         cd node
