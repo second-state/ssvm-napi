@@ -6,6 +6,10 @@ on:
     - '**/test**'
     tags:
     - '[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
+    branches:
+    - master
+
 
 jobs:
   test_wasm_learning:
