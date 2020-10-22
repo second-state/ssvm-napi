@@ -391,8 +391,6 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
 
 Napi::Value SSVMAddon::RunCompile(const Napi::CallbackInfo &Info)
 {
-  InitVM(Info);
-
   std::string FileName;
   if (Info.Length() > 0) {
     FileName = Info[0].As<Napi::String>().Utf8Value();
