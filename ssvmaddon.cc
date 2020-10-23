@@ -73,7 +73,6 @@ inline bool endsWith(const std::string &S, const std::string &Suffix) {
 SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
     : Napi::ObjectWrap<SSVMAddon>(Info), Configure(nullptr), VM(nullptr),
       MemInst(nullptr), WasiMod(nullptr), Inited(false) {
-
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
 
@@ -130,7 +129,6 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   if (Inited) {
     return;
   }
-  Inited = true;
 
   Configure = new SSVM::VM::Configure();
   Configure->addVMType(SSVM::VM::Configure::VMType::Wasi);
@@ -138,6 +136,22 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   VM = new SSVM::VM::VM(*Configure);
 
   SSVM::Log::setErrorLoggingLevel();
+
+  Inited = true;
+}
+
+void SSVMAddon::FiniVM() {
+  if (!Inited) {
+    return;
+  }
+
+  delete VM;
+  VM = nullptr;
+  delete Configure;
+  Configure = nullptr;
+  MemInst = nullptr;
+
+  Inited = false;
 }
 
 void SSVMAddon::InitWasi(const Napi::CallbackInfo &Info,
@@ -166,6 +180,11 @@ void SSVMAddon::InitWasi(const Napi::CallbackInfo &Info,
   if (Options.isAOTMode()) {
     InitReactor(Info);
   }
+}
+
+void SSVMAddon::ThrowNapiError(const Napi::CallbackInfo &Info, ErrorType Type) {
+  FiniVM();
+  napi_throw_error(Info.Env(), "Error", SSVM::NAPI::ErrorMsgs.at(Type).c_str());
 }
 
 bool SSVMAddon::Compile() {
@@ -351,13 +370,12 @@ Napi::Value SSVMAddon::RunStart(const Napi::CallbackInfo &Info) {
   // command mode
   auto Result = VM->runWasmFile(BC.getPath(), "_start");
   if (!Result) {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::ExecutionFailed).c_str());
+    ThrowNapiError(Info, ErrorType::ExecutionFailed);
     return Napi::Value();
   }
   auto ErrCode = WasiMod->getEnv().getExitCode();
   WasiMod->getEnv().fini();
+  FiniVM();
   return Napi::Number::New(Info.Env(), ErrCode);
 }
 
@@ -397,12 +415,11 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   auto Res = VM->execute(FuncName, Args);
 
   if (!Res) {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::ExecutionFailed).c_str());
+    ThrowNapiError(Info, ErrorType::ExecutionFailed);
   }
 
   WasiMod->getEnv().fini();
+  FiniVM();
 }
 
 Napi::Value SSVMAddon::RunCompile(const Napi::CallbackInfo &Info)
@@ -436,25 +453,23 @@ Napi::Value SSVMAddon::RunIntImpl(const Napi::CallbackInfo &Info,
     case IntKind::SInt32:
     case IntKind::UInt32:
     case IntKind::Default:
+      FiniVM();
       return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
     case IntKind::SInt64:
     case IntKind::UInt64:
       if (auto ResMem = MemInst->getBytes(0, 8)) {
         uint32_t L = castFromBytesToU32(*ResMem, 0);
         uint32_t H = castFromBytesToU32(*ResMem, 4);
+        FiniVM();
         return Napi::Number::New(Info.Env(), castFromU32ToU64(L, H));
       }
       [[fallthrough]];
     default:
-      napi_throw_error(
-          Info.Env(), "Error",
-          SSVM::NAPI::ErrorMsgs.at(ErrorType::NAPIUnkownIntType).c_str());
+      ThrowNapiError(Info, ErrorType::NAPIUnkownIntType);
       return Napi::Value();
     }
   } else {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::ExecutionFailed).c_str());
+    ThrowNapiError(Info, ErrorType::ExecutionFailed);
     return Napi::Value();
   }
 }
@@ -490,9 +505,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
   PrepareResource(Info, Args);
   auto Res = VM->execute(FuncName, Args);
   if (!Res) {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::ExecutionFailed).c_str());
+    ThrowNapiError(Info, ErrorType::ExecutionFailed);
     return Napi::Value();
   }
   Rets = *Res;
@@ -505,9 +518,7 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
     ResultDataLen = (*ResultMem)[4] | ((*ResultMem)[5] << 8) |
                     ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
   } else {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::BadMemoryAccess).c_str());
+    ThrowNapiError(Info, ErrorType::BadMemoryAccess);
     return Napi::Value();
   }
 
@@ -515,14 +526,13 @@ Napi::Value SSVMAddon::RunString(const Napi::CallbackInfo &Info) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
   } else {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::BadMemoryAccess).c_str());
+    ThrowNapiError(Info, ErrorType::BadMemoryAccess);
     return Napi::Value();
   }
 
   std::string ResultString(ResultData.begin(), ResultData.end());
   WasiMod->getEnv().fini();
+  FiniVM();
   return Napi::String::New(Info.Env(), ResultString);
 }
 
@@ -541,9 +551,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
   PrepareResource(Info, Args);
   auto Res = VM->execute(FuncName, Args);
   if (!Res) {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::ExecutionFailed).c_str());
+    ThrowNapiError(Info, ErrorType::ExecutionFailed);
     return Napi::Value();
   }
   Rets = *Res;
@@ -557,9 +565,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     ResultDataLen = (*ResultMem)[4] | ((*ResultMem)[5] << 8) |
                     ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
   } else {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::BadMemoryAccess).c_str());
+    ThrowNapiError(Info, ErrorType::BadMemoryAccess);
     return Napi::Value();
   }
   /// Get result data
@@ -567,9 +573,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
     ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
   } else {
-    napi_throw_error(
-        Info.Env(), "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::BadMemoryAccess).c_str());
+    ThrowNapiError(Info, ErrorType::BadMemoryAccess);
     return Napi::Value();
   }
 
@@ -578,6 +582,7 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
   Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
       Info.Env(), ResultDataLen, ResultArrayBuffer, 0, napi_uint8_array);
   WasiMod->getEnv().fini();
+  FiniVM();
   return ResultTypedArray;
 }
 
@@ -591,28 +596,20 @@ void SSVMAddon::LoadWasm(const Napi::CallbackInfo &Info) {
   }
 
   if (BC.isFile() && !VM->loadWasm(BC.getPath())) {
-    napi_throw_error(
-        Env, "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
+    ThrowNapiError(Info, ErrorType::LoadWasmFailed);
     return;
   } else if (BC.isValidData() && !(VM->loadWasm(BC.getData()))) {
-    napi_throw_error(
-        Env, "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
+    ThrowNapiError(Info, ErrorType::LoadWasmFailed);
     return;
   }
 
   if (!(VM->validate())) {
-    napi_throw_error(
-        Env, "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::ValidateWasmFailed).c_str());
+    ThrowNapiError(Info, ErrorType::ValidateWasmFailed);
     return;
   }
 
   if (!(VM->instantiate())) {
-    napi_throw_error(
-        Env, "Error",
-        SSVM::NAPI::ErrorMsgs.at(ErrorType::InstantiateWasmFailed).c_str());
+    ThrowNapiError(Info, ErrorType::InstantiateWasmFailed);
     return;
   }
 
