@@ -21,8 +21,12 @@ public:
   static Napi::Object Init(Napi::Env Env, Napi::Object Exports);
   SSVMAddon(const Napi::CallbackInfo &Info);
   ~SSVMAddon(){
-    delete Configure;
-    delete VM;
+    if (Configure != nullptr) {
+      delete Configure;
+    }
+    if (VM != nullptr) {
+      delete VM;
+    }
   };
 
   enum class IntKind {
@@ -49,6 +53,7 @@ private:
 
   /// Setup related functions
   void InitVM(const Napi::CallbackInfo &Info);
+  void FiniVM();
   void InitWasi(const Napi::CallbackInfo &Info, const std::string &FuncName);
   void LoadWasm(const Napi::CallbackInfo &Info);
   /// WasmBindgen related functions
@@ -74,6 +79,8 @@ private:
   bool Compile();
   bool CompileBytecodeTo(const std::string &Path);
   void InitReactor(const Napi::CallbackInfo &Info);
+  /// Error handling functions
+  void ThrowNapiError(const Napi::CallbackInfo &Info, ErrorType Type);
 };
 
 #endif
