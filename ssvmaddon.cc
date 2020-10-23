@@ -205,6 +205,22 @@ bool SSVMAddon::Compile() {
 
 bool SSVMAddon::CompileBytecodeTo(const std::string &Path) {
   SSVM::Loader::Loader Loader;
+
+  /// BC can be Bytecode or FilePath
+  if (BC.isFile()) {
+    /// File mode
+    /// We have to load bytecode from given file first.
+    std::filesystem::path P =
+        std::filesystem::absolute(std::filesystem::path(BC.getPath()));
+    if (auto Res = Loader.loadFile(P.string())) {
+      BC.setData(std::move(*Res));
+    } else {
+      const auto Err = static_cast<uint32_t>(Res.error());
+      std::cerr << "SSVM::NAPI::AOT::Load file failed. Error code: " << Err;
+      return false;
+    }
+  }
+
   std::unique_ptr<SSVM::AST::Module> Module;
   if (auto Res = Loader.parseModule(BC.getData())) {
     Module = std::move(*Res);
@@ -568,25 +584,22 @@ Napi::Value SSVMAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
 void SSVMAddon::LoadWasm(const Napi::CallbackInfo &Info) {
   Napi::Env Env = Info.Env();
   Napi::HandleScope Scope(Env);
-  if (BC.isFile()) {
-    if (!VM->loadWasm(BC.getPath())) {
-      napi_throw_error(
-          Env, "Error",
-          SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
-      return;
-    }
-  } else if (BC.isValidData()) {
-    if (Options.isAOTMode() && !(VM->loadWasm(BC.getPath()))) {
-      napi_throw_error(
-          Env, "Error",
-          SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
-      return;
-    } else if (!Options.isAOTMode() && !(VM->loadWasm(BC.getData()))) {
-      napi_throw_error(
-          Env, "Error",
-          SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
-      return;
-    }
+
+  if (BC.isCompiled()) {
+    Cache.dumpToFile(BC.getData());
+    BC.setPath(Cache.getPath());
+  }
+
+  if (BC.isFile() && !VM->loadWasm(BC.getPath())) {
+    napi_throw_error(
+        Env, "Error",
+        SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
+    return;
+  } else if (BC.isValidData() && !(VM->loadWasm(BC.getData()))) {
+    napi_throw_error(
+        Env, "Error",
+        SSVM::NAPI::ErrorMsgs.at(ErrorType::LoadWasmFailed).c_str());
+    return;
   }
 
   if (!(VM->validate())) {
