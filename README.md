@@ -191,6 +191,20 @@ let result = RunUint8Array("Hash", "Hello, world!");
 // result: "[12, 22, 33, 42, 51]".
 ```
 
+#### `Compile(output_filename) -> boolean`
+* Compile a given wasm file (can be a file path or a byte array) into a native binary whose name is the given `output_filename`.
+* This function uses SSVM AOT compiler.
+* Return `false` when the compilation failed.
+```javascript
+// Compile only
+let vm = ssvm.VM("/path/to/wasm/file", options);
+vm.Compile("/path/to/aot/file");
+
+// When you want to run the compiled file
+let vm = ssvm.VM("/path/to/aot/file", options);
+vm.RunXXX("Func", args);
+```
+
 #### `GetStatistics() -> Object`
 * If you want to enable measurement, set the option `EnableMeasurement` to `true`. But please notice that enabling measurement will significantly affect performance.
 * Get the statistics of execution runtime.
