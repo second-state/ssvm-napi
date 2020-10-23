@@ -2,50 +2,92 @@ const assert = require('assert');
 const fs = require('fs');
 const ssvm = require('../..');
 
-describe('aot compile', function() {
-  // Filename MUST ends with '.so'
-  let filename = 'pkg/integers_lib_bg.wasm.so';
+describe('aot', function() {
+  let inputName = 'pkg/integers_lib_bg.wasm';
 
-  this.timeout(0);
+  describe('compile', function() {
+    this.timeout(0);
 
-  before(function() {
-    if (fs.existsSync(filename)) {
-      fs.unlinkSync(filename); // Alt solution for fs.rmSync (added in v14.14)
-    }
-  });
+    // AOT filename MUST ends with '.so'
+    let outputName = 'pkg/integers_lib_bg.compile.so';
 
-  it('from bytearray', function() {
-    let bytearray = fs.readFileSync('pkg/integers_lib_bg.wasm');
-    let vm = new ssvm.VM(bytearray, {
-      EnableAOT: true,
-      args: process.argv,
-      env: process.env,
-      preopens: { '/': __dirname },
+    beforeEach(function() {
+      if (fs.existsSync(outputName)) {
+        fs.unlinkSync(outputName); // Alt solution for fs.rmSync (added in v14.14)
+      }
     });
 
-    assert.ok(vm.Compile(filename));
-  });
+    let cases = new Map([
+      ['from filename', (s) => s],
+      ['from bytearray', (s) => fs.readFileSync(s)],
+    ]);
 
-  // XXX: disabled because it breaks SSVM interpreter singleton
-  /*
-  it('from aot filename', function() {
-    let vm = new ssvm.VM(filename, {
-      EnableAOT: true,
-      args: process.argv,
-      env: process.env,
-      preopens: { '/': __dirname },
+    cases.forEach(function(f, caseName) {
+      it(caseName, function() {
+        let vm = new ssvm.VM(f(inputName), {
+          EnableAOT: true,
+          args: process.argv,
+          env: process.env,
+          preopens: { '/': __dirname },
+        });
+
+        assert.ok(vm.Compile(outputName));
+      });
     });
 
-    assert.equal(vm.RunInt('lcm_s32', 123, 1011), 41451);
-    assert.equal(vm.RunUInt('lcm_u32', 2147483647, 2), 4294967294);
-    assert.equal(vm.RunInt64('lcm_s64', 2147483647, 2), 4294967294);
-    assert.equal(vm.RunUInt64('lcm_u64', 9223372036854775807, 2), 18446744073709551614);
+    afterEach(function() {
+      if (fs.existsSync(outputName)) {
+        fs.unlinkSync(outputName); // Alt solution for fs.rmSync (added in v14.14)
+      }
+    });
   });
-  */
 
-  after(function() {
-    if (fs.existsSync(filename)) {
-      fs.unlinkSync(filename); // Alt solution for fs.rmSync (added in v14.14)
-    }
+  describe('run', function() {
+    // AOT filename MUST ends with '.so'
+    let aotName = 'pkg/integers_lib_bg.run.so';
+
+    before(function() {
+      this.timeout(0);
+
+      if (fs.existsSync(aotName)) {
+        fs.unlinkSync(aotName); // Alt solution for fs.rmSync (added in v14.14)
+      }
+
+      let vm = new ssvm.VM(inputName, {
+        EnableAOT: true,
+        args: process.argv,
+        env: process.env,
+        preopens: { '/': __dirname },
+      });
+
+      assert.ok(vm.Compile(aotName));
+    });
+
+    let cases = new Map([
+      ['from filename', (s) => s],
+      ['from bytearray', (s) => fs.readFileSync(s)],
+    ]);
+
+    cases.forEach(function(f, caseName) {
+      it(caseName, function() {
+        let vm = new ssvm.VM(f(aotName), {
+          EnableAOT: true,
+          args: process.argv,
+          env: process.env,
+          preopens: { '/': __dirname },
+        });
+
+        assert.equal(vm.RunInt('lcm_s32', 123, 1011), 41451);
+        assert.equal(vm.RunUInt('lcm_u32', 2147483647, 2), 4294967294);
+        assert.equal(vm.RunInt64('lcm_s64', 2147483647, 2), 4294967294);
+        assert.equal(vm.RunUInt64('lcm_u64', 9223372036854775807, 2), 18446744073709551614);
+      });
+    });
+
+    after(function() {
+      if (fs.existsSync(aotName)) {
+        fs.unlinkSync(aotName); // Alt solution for fs.rmSync (added in v14.14)
+      }
+    });
   });
 });
