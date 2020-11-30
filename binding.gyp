@@ -40,6 +40,7 @@
         "ssvm-core/lib/interpreter/engine/control.cpp",
         "ssvm-core/lib/interpreter/engine/engine.cpp",
         "ssvm-core/lib/interpreter/engine/memory.cpp",
+        "ssvm-core/lib/interpreter/engine/table.cpp",
         "ssvm-core/lib/interpreter/engine/variable.cpp",
         "ssvm-core/lib/interpreter/instantiate/data.cpp",
         "ssvm-core/lib/interpreter/instantiate/elem.cpp",
