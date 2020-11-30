@@ -1,10 +1,10 @@
 #include "ssvmaddon.h"
 
 #include "aot/compiler.h"
-#include "loader/loader.h"
 #include "common/filesystem.h"
 #include "common/log.h"
 #include "common/span.h"
+#include "loader/loader.h"
 #include "utils.h"
 
 #include <limits>
@@ -64,8 +64,8 @@ inline uint64_t castFromU32ToU64(uint32_t L, uint32_t H) {
 
 inline bool endsWith(const std::string &S, const std::string &Suffix) {
   return S.length() >= Suffix.length() &&
-         S.compare(S.length() - Suffix.length(), std::string::npos,
-                   Suffix) == 0;
+         S.compare(S.length() - Suffix.length(), std::string::npos, Suffix) ==
+             0;
 }
 
 } // namespace
@@ -163,8 +163,7 @@ void SSVMAddon::InitWasi(const Napi::CallbackInfo &Info,
   if (Options.isAOTMode()) {
     if (BC.isFile() && endsWith(BC.getPath(), ".so")) {
       // BC is already the compiled filename, do nothing
-    }
-    else if (!BC.isCompiled()) {
+    } else if (!BC.isCompiled()) {
       Compile();
     }
     /// After Compile(), {Bytecode, FilePath} -> {FilePath}
@@ -422,8 +421,7 @@ void SSVMAddon::Run(const Napi::CallbackInfo &Info) {
   FiniVM();
 }
 
-Napi::Value SSVMAddon::RunCompile(const Napi::CallbackInfo &Info)
-{
+Napi::Value SSVMAddon::RunCompile(const Napi::CallbackInfo &Info) {
   std::string FileName;
   if (Info.Length() > 0) {
     FileName = Info[0].As<Napi::String>().Utf8Value();
@@ -635,8 +633,9 @@ Napi::Value SSVMAddon::GetStatistics(const Napi::CallbackInfo &Info) {
                 Napi::Number::New(Info.Env(), Nano(Stat.getTotalExecTime())));
     RetStat.Set("WasmExecutionTime",
                 Napi::Number::New(Info.Env(), Nano(Stat.getWasmExecTime())));
-    RetStat.Set("HostFunctionExecutionTime",
-                Napi::Number::New(Info.Env(), Nano(Stat.getHostFuncExecTime())));
+    RetStat.Set(
+        "HostFunctionExecutionTime",
+        Napi::Number::New(Info.Env(), Nano(Stat.getHostFuncExecTime())));
     RetStat.Set("InstructionCount",
                 Napi::Number::New(Info.Env(), Stat.getInstrCount()));
     RetStat.Set("TotalGasCost",
