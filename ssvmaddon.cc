@@ -145,6 +145,7 @@ void SSVMAddon::FiniVM() {
     return;
   }
 
+  Stat = VM->getStatistics();
   delete VM;
   VM = nullptr;
   delete Configure;
@@ -623,7 +624,6 @@ Napi::Value SSVMAddon::GetStatistics(const Napi::CallbackInfo &Info) {
   if (!Options.isMeasuring()) {
     RetStat.Set("Measure", Napi::Boolean::New(Info.Env(), false));
   } else {
-    Stat = VM->getStatistics();
     auto Nano = [](auto &&Duration) {
       return std::chrono::nanoseconds(Duration).count();
     };
