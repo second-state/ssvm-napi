@@ -210,9 +210,9 @@ vm.RunXXX("Func", args);
 * Get the statistics of execution runtime.
 * Return Value `Statistics` <Object>
 	* `Measure` -> <Boolean>: To show if the measurement is enabled or not.
-	* `TotalExecutionTime` -> <Integer>: Total execution time (Wasm exeuction time + Host function execution time) in `us` unit.
-	* `WasmExecutionTime` -> <Integer>: Wasm instructions execution time in `us` unit.
-	* `HostFunctionExecutionTime` -> <Integer>: Host functions (e.g. eei or wasi functions) execution time in `us` unit.
+	* `TotalExecutionTime` -> <Integer>: Total execution time (Wasm exeuction time + Host function execution time) in `` unit.
+	* `WasmExecutionTime` -> <Integer>: Wasm instructions execution time in `ns` unit.
+	* `HostFunctionExecutionTime` -> <Integer>: Host functions (e.g. eei or wasi functions) execution time in `ns` unit.
 	* `InstructionCount` -> <Integer>: The number of executed instructions in this execution.
 	* `TotalGasCost` -> <Integer>: The cost of this execution.
 	* `InstructionPerSecond` -> <Float>: The instructions per second of this execution.
