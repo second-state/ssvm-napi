@@ -123,6 +123,11 @@ SSVMAddon::SSVMAddon(const Napi::CallbackInfo &Info)
         SSVM::NAPI::ErrorMsgs.at(ErrorType::InvalidInputFormat).c_str());
     return;
   }
+
+  // Enable all available proposals
+  ProposalConf.addProposal(SSVM::Proposal::BulkMemoryOperations);
+  ProposalConf.addProposal(SSVM::Proposal::ReferenceTypes);
+  ProposalConf.addProposal(SSVM::Proposal::SIMD);
 }
 
 void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
@@ -133,7 +138,7 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   Configure = new SSVM::VM::Configure();
   Configure->addVMType(SSVM::VM::Configure::VMType::Wasi);
   Configure->addVMType(SSVM::VM::Configure::VMType::SSVM_Process);
-  VM = new SSVM::VM::VM(*Configure);
+  VM = new SSVM::VM::VM(ProposalConf, *Configure);
 
   SSVM::Log::setErrorLoggingLevel();
 
@@ -190,7 +195,7 @@ void SSVMAddon::ThrowNapiError(const Napi::CallbackInfo &Info, ErrorType Type) {
 bool SSVMAddon::Compile() {
   /// BC can be Bytecode or FilePath
   if (BC.isFile()) {
-    SSVM::Loader::Loader Loader;
+    SSVM::Loader::Loader Loader(ProposalConf);
 
     /// File mode
     /// We have to load bytecode from given file first.
@@ -223,7 +228,7 @@ bool SSVMAddon::Compile() {
 }
 
 bool SSVMAddon::CompileBytecodeTo(const std::string &Path) {
-  SSVM::Loader::Loader Loader;
+  SSVM::Loader::Loader Loader(ProposalConf);
 
   /// BC can be Bytecode or FilePath
   if (BC.isFile()) {
