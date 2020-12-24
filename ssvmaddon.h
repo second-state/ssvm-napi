@@ -41,6 +41,7 @@ private:
   using ErrorType = SSVM::NAPI::ErrorType;
   static Napi::FunctionReference Constructor;
   SSVM::VM::Configure *Configure;
+  SSVM::ProposalConfigure ProposalConf;
   SSVM::VM::VM *VM;
   SSVM::Runtime::Instance::MemoryInstance *MemInst;
   SSVM::Statistics::Statistics Stat;

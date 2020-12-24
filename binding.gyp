@@ -32,6 +32,7 @@
         "ssvm-core/lib/ast/type.cpp",
         "ssvm-core/lib/common/hexstr.cpp",
         "ssvm-core/lib/common/log.cpp",
+        "ssvm-core/lib/common/proposal.cpp",
         "ssvm-core/lib/host/ssvm_process/processfunc.cpp",
         "ssvm-core/lib/host/ssvm_process/processmodule.cpp",
         "ssvm-core/lib/host/wasi/wasienv.cpp",
