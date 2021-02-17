@@ -22,8 +22,8 @@
     "package_name": "{module_name}-{platform}-{arch}.tar.gz"
   },
   "dependencies": {
+    "@mapbox/node-pre-gyp": "^1.0.0",
     "node-addon-api": "^3.0.0",
-    "node-pre-gyp": "^0.14.0",
     "npm": "^6.14.5"
   },
   "devDependencies": {
