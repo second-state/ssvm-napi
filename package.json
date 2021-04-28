@@ -24,12 +24,12 @@
   "dependencies": {
     "@mapbox/node-pre-gyp": "^1.0.0",
     "node-addon-api": "^3.0.0",
-    "npm": "^6.14.5"
+    "npm": "^7.11.1"
   },
   "devDependencies": {
     "mocha": "^8.1.3",
     "node-gyp-cache": "^0.2.1",
-    "ssvmup": "^0.1.17"
+    "ssvmup": "^0.1.21"
   },
   "scripts": {
     "test": "cd test && ./test.sh",

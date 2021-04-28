@@ -13,11 +13,36 @@ bool parseWasiStartFlag(const Napi::Object &Options) {
   return false;
 }
 
+bool parseAllowedCmds(std::vector<std::string> &AllowedCmds, const Napi::Object &Options) {
+  AllowedCmds.clear();
+  if (Options.Has(kAllowedCommandsString) && Options.Get(kAllowedCommandsString).IsArray()) {
+    Napi::Array Cmds = Options.Get(kAllowedCommandsString).As<Napi::Array>();
+    for (uint32_t I = 0; I < Cmds.Length(); I++) {
+      Napi::Value Cmd = Cmds[I];
+      if (Cmd.IsString()) {
+        AllowedCmds.push_back(Cmd.As<Napi::String>().Utf8Value());
+      } else {
+        // Invalid inputs
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool parseAllowedCmdsAll(const Napi::Object &Options) {
+  if (Options.Has(kAllowedCommandsAllString) && Options.Get(kAllowedCommandsAllString).IsBoolean()) {
+    return Options.Get(kAllowedCommandsAllString).As<Napi::Boolean>().Value();
+  }
+  return false;
+}
+
+
 bool parseCmdArgs(std::vector<std::string> &CmdArgs,
                   const Napi::Object &Options) {
   CmdArgs.clear();
-  if (Options.Has("args") && Options.Get("args").IsArray()) {
-    Napi::Array Args = Options.Get("args").As<Napi::Array>();
+  if (Options.Has(kCmdArgsString) && Options.Get(kCmdArgsString).IsArray()) {
+    Napi::Array Args = Options.Get(kCmdArgsString).As<Napi::Array>();
     for (uint32_t i = 0; i < Args.Length(); i++) {
       Napi::Value Arg = Args[i];
       if (Arg.IsNumber()) {
@@ -43,8 +68,8 @@ bool parseCmdArgs(std::vector<std::string> &CmdArgs,
 
 bool parseDirs(std::vector<std::string> &Dirs, const Napi::Object &Options) {
   Dirs.clear();
-  if (Options.Has("preopens") && Options.Get("preopens").IsObject()) {
-    Napi::Object Preopens = Options.Get("preopens").As<Napi::Object>();
+  if (Options.Has(kPreOpensString) && Options.Get(kPreOpensString).IsObject()) {
+    Napi::Object Preopens = Options.Get(kPreOpensString).As<Napi::Object>();
     Napi::Array Keys = Preopens.GetPropertyNames();
     for (uint32_t i = 0; i < Keys.Length(); i++) {
       // Dir format: <guest_path>:<host_path>
@@ -69,8 +94,8 @@ bool parseDirs(std::vector<std::string> &Dirs, const Napi::Object &Options) {
 
 bool parseEnvs(std::vector<std::string> &Envs, const Napi::Object &Options) {
   Envs.clear();
-  if (Options.Has("env") && Options.Get("env").IsObject()) {
-    Napi::Object Environs = Options.Get("env").As<Napi::Object>();
+  if (Options.Has(kEnvString) && Options.Get(kEnvString).IsObject()) {
+    Napi::Object Environs = Options.Get(kEnvString).As<Napi::Object>();
     Napi::Array Keys = Environs.GetPropertyNames();
     for (uint32_t i = 0; i < Keys.Length(); i++) {
       // Environ format: <KEY>=<VALUE>
@@ -94,16 +119,16 @@ bool parseEnvs(std::vector<std::string> &Envs, const Napi::Object &Options) {
 }
 
 bool parseAOTConfig(const Napi::Object &Options) {
-  if (Options.Has("EnableAOT") && Options.Get("EnableAOT").IsBoolean()) {
-    return Options.Get("EnableAOT").As<Napi::Boolean>().Value();
+  if (Options.Has(kEnableAOTString) && Options.Get(kEnableAOTString).IsBoolean()) {
+    return Options.Get(kEnableAOTString).As<Napi::Boolean>().Value();
   }
   return false;
 }
 
 bool parseMeasure(const Napi::Object &Options) {
-  if (Options.Has("EnableMeasurement") &&
-      Options.Get("EnableMeasurement").IsBoolean()) {
-    return Options.Get("EnableMeasurement").As<Napi::Boolean>().Value();
+  if (Options.Has(kEnableMeasurementString) &&
+      Options.Get(kEnableMeasurementString).IsBoolean()) {
+    return Options.Get(kEnableMeasurementString).As<Napi::Boolean>().Value();
   }
   return false;
 }
@@ -113,12 +138,14 @@ bool parseMeasure(const Napi::Object &Options) {
 bool SSVMOptions::parse(const Napi::Object &Options) {
   if (!parseCmdArgs(getWasiCmdArgs(), Options) ||
       !parseDirs(getWasiDirs(), Options) ||
-      !parseEnvs(getWasiEnvs(), Options)) {
+      !parseEnvs(getWasiEnvs(), Options) ||
+      !parseAllowedCmds(getAllowedCmds(), Options)) {
     return false;
   }
   setReactorMode(!parseWasiStartFlag(Options));
   setAOTMode(parseAOTConfig(Options));
   setMeasure(parseMeasure(Options));
+  setAllowedCmdsAll(parseAllowedCmdsAll(Options));
   return true;
 }
 

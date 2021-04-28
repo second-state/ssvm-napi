@@ -47,6 +47,9 @@ jobs:
         sudo apt-get install llvm-dev liblld-10-dev libboost-all-dev
         npm i -g ssvmup
 
+    - name: Set Rust to required version
+      run: rustup override set 1.50.0
+
     - name: Build and install SSVM-napi
       uses: './ssvm-napi/.github/actions/build-from-source'
       with:

@@ -5,6 +5,8 @@
 #include "common/log.h"
 #include "common/span.h"
 #include "loader/loader.h"
+#include "host/ssvm_process/processmodule.h"
+#include "host/wasi/wasimodule.h"
 #include "utils.h"
 
 #include <limits>
@@ -141,6 +143,17 @@ void SSVMAddon::InitVM(const Napi::CallbackInfo &Info) {
   VM = new SSVM::VM::VM(ProposalConf, *Configure);
 
   SSVM::Log::setErrorLoggingLevel();
+
+  SSVM::Host::SSVMProcessModule *ProcMod =
+    dynamic_cast<SSVM::Host::SSVMProcessModule *>(
+        VM->getImportModule(SSVM::VM::Configure::VMType::SSVM_Process));
+
+  if (Options.isAllowedCmdsAll()) {
+    ProcMod->getEnv().AllowedAll = true;
+  }
+  for (auto &Cmd : Options.getAllowedCmds()) {
+    ProcMod->getEnv().AllowedCmd.insert(Cmd);
+  }
 
   Inited = true;
 }

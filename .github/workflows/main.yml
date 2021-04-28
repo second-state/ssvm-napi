@@ -31,6 +31,9 @@ jobs:
       run: |
         sudo apt-get install llvm-dev liblld-10-dev libboost-all-dev
 
+    - name: Set Rust to required version
+      run: rustup override set 1.50.0
+
     - name: Build SSVM-napi with ${{ matrix.cc }}
       uses: './.github/actions/build-from-source'
       with:
