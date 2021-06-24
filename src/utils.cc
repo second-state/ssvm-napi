@@ -5,7 +5,7 @@
 #include <iostream>
 #include <string>
 
-namespace SSVM {
+namespace WASMEDGE {
 namespace NAPI {
 
 bool checkLibCXXVersion() {
@@ -36,7 +36,7 @@ bool checkLibCXXVersion() {
               << "Error: libstdc++ version mismatched!\n"
               << "Your current version is " << CurrentGLibVer
               << " which is less than libstdc++6.0.28\n"
-              << "SSVM relies on >=libstdc++6.0.28 (GLIBCXX >= 3.4.28)\n"
+              << "WASMEDGE relies on >=libstdc++6.0.28 (GLIBCXX >= 3.4.28)\n"
               << "Please upgrade the libstdc++6 library.\n\n"
               << "For more details, refer to our environment set up document: "
                  "https://www.secondstate.io/articles/setup-rust-nodejs/\n"
@@ -51,4 +51,4 @@ bool checkLibCXXVersion() {
 }
 
 } // namespace NAPI
-} // namespace SSVM
+} // namespace WASMEDGE

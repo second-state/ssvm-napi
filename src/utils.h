@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-namespace SSVM {
+namespace WASMEDGE {
 namespace NAPI {
 
 // Check glibcxx version
@@ -11,4 +11,4 @@ bool checkLibCXXVersion();
 
 
 } // namespace NAPI
-} // namespace SSVM
+} // namespace WASMEDGE

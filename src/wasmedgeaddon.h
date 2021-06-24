@@ -1,31 +1,29 @@
-#ifndef SSVMADDON_H
-#define SSVMADDON_H
+#ifndef WASMEDGEADDON_H
+#define WASMEDGEADDON_H
 
 #include "bytecode.h"
 #include "cache.h"
 #include "errors.h"
 #include "options.h"
 
-#include "vm/configure.h"
-#include "vm/vm.h"
-#include "host/wasi/wasimodule.h"
-#include "common/statistics.h"
-
+#include <wasmedge.h>
 #include <napi.h>
 #include <string>
 #include <vector>
 #include <unordered_map>
 
-class SSVMAddon : public Napi::ObjectWrap<SSVMAddon> {
+class WasmEdgeAddon : public Napi::ObjectWrap<WasmEdgeAddon> {
 public:
   static Napi::Object Init(Napi::Env Env, Napi::Object Exports);
-  SSVMAddon(const Napi::CallbackInfo &Info);
-  ~SSVMAddon(){
+  WasmEdgeAddon(const Napi::CallbackInfo &Info);
+  ~WasmEdgeAddon(){
     if (Configure != nullptr) {
-      delete Configure;
+      WasmEdge_ConfigureDelete(Configure);
+      Configure = nullptr;
     }
     if (VM != nullptr) {
-      delete VM;
+      WasmEdge_VMDelete(VM);
+      VM = nullptr;
     }
   };
 
@@ -38,17 +36,16 @@ public:
   };
 
 private:
-  using ErrorType = SSVM::NAPI::ErrorType;
+  using ErrorType = WASMEDGE::NAPI::ErrorType;
   static Napi::FunctionReference Constructor;
-  SSVM::VM::Configure *Configure;
-  SSVM::ProposalConfigure ProposalConf;
-  SSVM::VM::VM *VM;
+  WasmEdge_ConfigureContext *Configure;
+  WasmEdge_VMContext *VM;
   SSVM::Runtime::Instance::MemoryInstance *MemInst;
-  SSVM::Statistics::Statistics Stat;
-  SSVM::Host::WasiModule *WasiMod;
-  SSVM::NAPI::Bytecode BC;
-  SSVM::NAPI::SSVMOptions Options;
-  SSVM::NAPI::SSVMCache Cache;
+  WasmEdge_StatisticsContext Stat;
+  WasmEdge_ImportObjectContext *WasiMod;
+  WASMEDGE::NAPI::Bytecode BC;
+  WASMEDGE::NAPI::Options Options;
+  WASMEDGE::NAPI::Cache Cache;
   std::vector<uint8_t> ResultData;
   bool Inited;
 

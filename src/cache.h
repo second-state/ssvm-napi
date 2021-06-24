@@ -7,10 +7,10 @@
 
 #include <boost/functional/hash.hpp>
 
-namespace SSVM {
+namespace WASMEDGE {
 namespace NAPI {
 
-class SSVMCache {
+class Cache {
 private:
   std::string Path;
   size_t CodeHash;
@@ -45,4 +45,4 @@ public:
 };
 
 } // namespace NAPI
-} // namespace SSVM
+} // namespace WASMEDGE

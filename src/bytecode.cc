@@ -1,6 +1,6 @@
 #include "bytecode.h"
 
-namespace SSVM {
+namespace WASMEDGE {
 namespace NAPI {
 
 void Bytecode::setPath(const std::string &IPath) noexcept {
@@ -74,4 +74,4 @@ bool Bytecode::isValidData() const noexcept {
 }
 
 } // namespace NAPI
-} // namespace SSVM
+} // namespace WASMEDGE
