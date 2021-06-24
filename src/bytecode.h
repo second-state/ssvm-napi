@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace SSVM {
+namespace WASMEDGE {
 namespace NAPI {
 
 class Bytecode {
@@ -35,4 +35,4 @@ public:
 };
 
 } // namespace NAPI
-} // namespace SSVM
+} // namespace WASMEDGE

@@ -1,6 +1,6 @@
 #include "options.h"
 
-namespace SSVM {
+namespace WASMEDGE {
 namespace NAPI {
 
 namespace {
@@ -135,7 +135,7 @@ bool parseMeasure(const Napi::Object &Options) {
 
 } // namespace
 
-bool SSVMOptions::parse(const Napi::Object &Options) {
+bool Options::parse(const Napi::Object &Options) {
   if (!parseCmdArgs(getWasiCmdArgs(), Options) ||
       !parseDirs(getWasiDirs(), Options) ||
       !parseEnvs(getWasiEnvs(), Options) ||
@@ -150,4 +150,4 @@ bool SSVMOptions::parse(const Napi::Object &Options) {
 }
 
 } // namespace NAPI
-} // namespace SSVM
+} // namespace WASMEDGE

@@ -4,7 +4,7 @@
 #include <napi.h>
 #include <string>
 
-namespace SSVM {
+namespace WASMEDGE {
 namespace NAPI {
 
 enum class ErrorType {
@@ -37,7 +37,7 @@ const std::map<ErrorType, std::string> ErrorMsgs = {
      "Wasm bytecode/file failed at validation stage."},
     {ErrorType::InstantiateWasmFailed,
      "Wasm bytecode/file cannot be instantiated."},
-    {ErrorType::ExecutionFailed, "SSVM execution failed"},
+    {ErrorType::ExecutionFailed, "WASMEDGE execution failed"},
     {ErrorType::BadMemoryAccess,
      "Access to forbidden memory address when retrieving address and "
      "length of result data"},
@@ -47,8 +47,8 @@ const std::map<ErrorType, std::string> ErrorMsgs = {
     {ErrorType::WasmBindgenFreeFailed,
      "Failed to call wasm-bindgen helper function __wbindgen_free"},
     {ErrorType::NAPIUnkownIntType,
-     "SSVM-Napi implementation error: unknown integer type"},
+     "WASMEDGE-Napi implementation error: unknown integer type"},
     {ErrorType::UnsupportedArgumentType, "Unsupported argument type"}};
 
 } // namespace NAPI
-} // namespace SSVM
+} // namespace WASMEDGE

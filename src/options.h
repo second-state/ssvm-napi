@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace SSVM {
+namespace WASMEDGE {
 namespace NAPI {
 
 static inline std::string kAllowedCommandsString [[maybe_unused]] = "AllowCommands";
@@ -15,7 +15,7 @@ static inline std::string kEnvString [[maybe_unused]] = "env";
 static inline std::string kEnableAOTString [[maybe_unused]] = "EnableAOT";
 static inline std::string kEnableMeasurementString [[maybe_unused]] = "EnableMeasurement";
 
-class SSVMOptions {
+class Options {
 private:
   bool ReactorMode;
   bool AOTMode;
@@ -52,4 +52,4 @@ public:
 };
 
 } // namespace NAPI
-} // namespace SSVM
+} // namespace WASMEDGE
