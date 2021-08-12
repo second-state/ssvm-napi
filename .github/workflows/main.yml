@@ -11,28 +11,36 @@ on:
 
 jobs:
   build_and_test:
-    runs-on: ubuntu-20.04
-
     strategy:
       matrix:
-        cc: ['clang', 'gcc']
         include:
         - cc: 'clang'
           cxx: 'clang++'
         - cc: 'gcc'
           cxx: 'g++'
+    name: Build & test wasmedge-core
+    runs-on: ubuntu-latest
+    container:
+      image: wasmedge/wasmedge:ubuntu2004_x86_64
 
     steps:
     - uses: actions/checkout@v2
-      with:
-        submodules: recursive
 
-    - name: Install dependencies
+    - name: Install clang
+      if: ${{ contains(matrix.cc, 'clang') }}
       run: |
-        sudo apt-get install llvm-dev liblld-10-dev libboost-all-dev
+        apt update && apt install -y clang
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'
 
     - name: Set Rust to required version
-      run: rustup override set 1.50.0
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: 1.50.0
+        override: true
 
     - name: Build SSVM-napi with ${{ matrix.cc }}
       uses: './.github/actions/build-from-source'

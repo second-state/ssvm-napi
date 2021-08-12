@@ -7,13 +7,6 @@
       "cflags_cc!": [ "-fno-exceptions", "-fno-rtti" ],
       "link_settings": {
           "libraries": [
-              "/usr/lib/llvm-10/lib/libLLVM.so",
-              "/usr/lib/llvm-10/lib/liblldELF.a",
-              "/usr/lib/llvm-10/lib/liblldCommon.a",
-              "/usr/lib/llvm-10/lib/liblldCore.a",
-              "/usr/lib/llvm-10/lib/liblldDriver.a",
-              "/usr/lib/llvm-10/lib/liblldReaderWriter.a",
-              "/usr/lib/llvm-10/lib/liblldYAML.a",
               "/usr/local/lib/libwasmedge_c.so",
           ],
       },
@@ -28,7 +21,6 @@
         "<!@(node -p \"require('node-addon-api').include\")",
         "src",
         "/usr/local/include",
-        "/usr/lib/llvm-10/include",
       ],
       'defines': [ 'NAPI_DISABLE_CPP_EXCEPTIONS' ],
     },

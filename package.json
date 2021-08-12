@@ -1,6 +1,6 @@
 {
-  "name": "ssvm",
-  "version": "0.7.3",
+  "name": "wasmedge-core",
+  "version": "0.8.1",
   "description": "Second State WebAssembly VM for Node.js Addon",
   "keywords": [
     "wasm",
@@ -11,13 +11,13 @@
     "serverless",
     "fucntion-as-a-service"
   ],
-  "repository": "https://github.com/second-state/ssvm-napi.git",
+  "repository": "https://github.com/second-state/wasmedge-core.git",
   "license": "Apache-2.0",
   "main": "index.js",
   "binary": {
-    "module_name": "ssvm",
+    "module_name": "wasmedge",
     "module_path": "./lib/binding/{platform}-{arch}/",
-    "host": "https://github.com/second-state/ssvm-napi/releases/download/",
+    "host": "https://github.com/second-state/wasmedge-core/releases/download/",
     "remote_path": "{version}",
     "package_name": "{module_name}-{platform}-{arch}.tar.gz"
   },
@@ -29,10 +29,11 @@
   "devDependencies": {
     "mocha": "^8.1.3",
     "node-gyp-cache": "^0.2.1",
-    "ssvmup": "^0.1.21"
+    "rustwasmc": "^0.1.29"
   },
   "scripts": {
     "test": "cd test && ./test.sh",
+    "preinstall": "./scripts/preinstall.sh",
     "install": "node-pre-gyp install --fallback-to-build"
   }
 }
