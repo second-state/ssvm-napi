@@ -13,12 +13,12 @@ on:
 
 jobs:
   test_wasm_learning:
-    runs-on: ubuntu-20.04
-
+    runs-on: ubuntu-latest
+    container:
+      image: wasmedge/wasmedge:ubuntu2004_x86_64
     strategy:
       matrix:
         node-version: [10.x, 12.x, 14.x]
-        ssvm-options: ['']
         include:
         - node-version: '14.x'
           ssvm-options: '--enable-aot'
@@ -36,60 +36,57 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
 
-    - name: Checkout SSVM-napi
+    - name: Checkout wasmedge-core
       uses: actions/checkout@v2
       with:
-        submodules: recursive
-        path: ssvm-napi
+        path: wasmedge-core
+
+    - name: Set Rust to required version
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: 1.50.0
+        override: true
 
     - name: Install dependencies
       run: |
-        sudo apt-get install llvm-dev liblld-10-dev libboost-all-dev
-        npm i -g ssvmup
+        npm install --unsafe-perm -g rustwasmc
 
-    - name: Set Rust to required version
-      run: rustup override set 1.50.0
-
-    - name: Build and install SSVM-napi
-      uses: './ssvm-napi/.github/actions/build-from-source'
+    - name: Build and install wasmedge-core
+      uses: './wasmedge-core/.github/actions/build-from-source'
       with:
-        path: './ssvm-napi'
+        path: './wasmedge-core'
 
     - name: Test functions ${{ matrix.ssvm-options }}
       run: |
-        ssvmup build ${{ matrix.ssvm-options }}
+        rustwasmc build ${{ matrix.ssvm-options }}
+        sed -i "s/require('ssvm')/require('wasmedge-core')/" pkg/*.js
         node node/app.js
-        ssvmup clean
+        rustwasmc clean
       working-directory: nodejs/functions
 
     - name: Test JSON IO ${{ matrix.ssvm-options }}
       run: |
-        ssvmup build ${{ matrix.ssvm-options }}
+        rustwasmc build ${{ matrix.ssvm-options }}
+        sed -i "s/require('ssvm')/require('wasmedge-core')/" pkg/*.js
         node node/app.js
-        ssvmup clean
+        rustwasmc clean
       working-directory: nodejs/json_io
 
     - name: Test WASI ${{ matrix.ssvm-options }}
       run: |
-        ssvmup build ${{ matrix.ssvm-options }}
+        rustwasmc build ${{ matrix.ssvm-options }}
+        sed -i "s/require('ssvm')/require('wasmedge-core')/" pkg/*.js
         node node/app.js
-        ssvmup clean
+        rustwasmc clean
       working-directory: nodejs/wasi
-
-    - name: Test RSA ${{ matrix.ssvm-options }}
-      if: ${{ contains(matrix.ssvm-options, 'aot') }}
-      run: |
-        ssvmup build ${{ matrix.ssvm-options }}
-        node node/app.js
-        ssvmup clean
-      working-directory: nodejs/rsa_example
 
     - name: Test KMeans ${{ matrix.ssvm-options }}
       if: ${{ contains(matrix.ssvm-options, 'aot') }}
       run: |
-        ssvmup build ${{ matrix.ssvm-options }}
+        rustwasmc build ${{ matrix.ssvm-options }}
+        sed -i "s/require('ssvm')/require('wasmedge-core')/" pkg/*.js
         cd node
         node app.js
         cd -
-        ssvmup clean
+        rustwasmc clean
       working-directory: nodejs/kmeans

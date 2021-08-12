@@ -17,7 +17,7 @@ private:
 
 public:
   inline void init(const std::vector<uint8_t> &Data) {
-    Path = std::string("/tmp/ssvm.tmp.") + std::to_string(hash(Data)) +
+    Path = std::string("/tmp/wasmedge.tmp.") + std::to_string(hash(Data)) +
            std::string(".so");
   }
 

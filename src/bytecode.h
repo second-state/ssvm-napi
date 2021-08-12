@@ -21,11 +21,13 @@ private:
   std::vector<uint8_t> Data;
   std::string Path;
   InputMode Mode;
+
 public:
   void setPath(const std::string &IPath) noexcept;
-  const std::string& getPath() const noexcept { return Path; }
+  const std::string &getPath() const noexcept { return Path; }
   void setData(const std::vector<uint8_t> &IData) noexcept;
-  const std::vector<uint8_t>& getData() const noexcept { return Data; }
+  const std::vector<uint8_t> &getData() noexcept;
+  void setFileMode() noexcept;
   bool isFile() const noexcept;
   bool isWasm() const noexcept;
   bool isELF() const noexcept;

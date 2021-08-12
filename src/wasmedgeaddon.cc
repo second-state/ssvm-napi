@@ -1,9 +1,10 @@
 #include "wasmedgeaddon.h"
 
-#include <wasmedge.h>
 #include <limits>
+#include <wasmedge.h>
 
 #include <boost/functional/hash.hpp>
+#include <iostream>
 
 Napi::FunctionReference WasmEdgeAddon::Constructor;
 
@@ -12,18 +13,18 @@ Napi::Object WasmEdgeAddon::Init(Napi::Env Env, Napi::Object Exports) {
 
   WASMEDGE::NAPI::checkLibCXXVersion();
 
-  Napi::Function Func =
-      DefineClass(Env, "VM",
-                  {InstanceMethod("GetStatistics", &WasmEdgeAddon::GetStatistics),
-                   InstanceMethod("Start", &WasmEdgeAddon::RunStart),
-                   InstanceMethod("Compile", &WasmEdgeAddon::RunCompile),
-                   InstanceMethod("Run", &WasmEdgeAddon::Run),
-                   InstanceMethod("RunInt", &WasmEdgeAddon::RunInt),
-                   InstanceMethod("RunUInt", &WasmEdgeAddon::RunUInt),
-                   InstanceMethod("RunInt64", &WasmEdgeAddon::RunInt64),
-                   InstanceMethod("RunUInt64", &WasmEdgeAddon::RunUInt64),
-                   InstanceMethod("RunString", &WasmEdgeAddon::RunString),
-                   InstanceMethod("RunUint8Array", &WasmEdgeAddon::RunUint8Array)});
+  Napi::Function Func = DefineClass(
+      Env, "VM",
+      {InstanceMethod("GetStatistics", &WasmEdgeAddon::GetStatistics),
+       InstanceMethod("Start", &WasmEdgeAddon::RunStart),
+       InstanceMethod("Compile", &WasmEdgeAddon::RunCompile),
+       InstanceMethod("Run", &WasmEdgeAddon::Run),
+       InstanceMethod("RunInt", &WasmEdgeAddon::RunInt),
+       InstanceMethod("RunUInt", &WasmEdgeAddon::RunUInt),
+       InstanceMethod("RunInt64", &WasmEdgeAddon::RunInt64),
+       InstanceMethod("RunUInt64", &WasmEdgeAddon::RunUInt64),
+       InstanceMethod("RunString", &WasmEdgeAddon::RunString),
+       InstanceMethod("RunUint8Array", &WasmEdgeAddon::RunUint8Array)});
 
   Constructor = Napi::Persistent(Func);
   Constructor.SuppressDestruct();
@@ -46,10 +47,9 @@ inline uint32_t castFromU64ToU32(uint64_t V) {
       V & static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
 }
 
-inline uint32_t castFromBytesToU32(const SSVM::Span<SSVM::Byte> &Bytes,
-                                   int Idx) {
-  return Bytes[Idx] | (Bytes[Idx + 1] << 8) | (Bytes[Idx + 2] << 16) |
-         (Bytes[Idx + 3] << 24);
+inline uint32_t castFromBytesToU32(const uint8_t *bytes, int Idx) {
+  return bytes[Idx] | (bytes[Idx + 1] << 8) | (bytes[Idx + 2] << 16) |
+         (bytes[Idx + 3] << 24);
 }
 
 inline uint64_t castFromU32ToU64(uint32_t L, uint32_t H) {
@@ -73,7 +73,8 @@ WasmEdgeAddon::WasmEdgeAddon(const Napi::CallbackInfo &Info)
   if (checkInputWasmFormat(Info)) {
     napi_throw_error(
         Info.Env(), "Error",
-        WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::ExpectWasmFileOrBytecode).c_str());
+        WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::ExpectWasmFileOrBytecode)
+            .c_str());
     return;
   }
 
@@ -99,16 +100,19 @@ WasmEdgeAddon::WasmEdgeAddon(const Napi::CallbackInfo &Info)
   } else if (Info[0].IsTypedArray() &&
              Info[0].As<Napi::TypedArray>().TypedArrayType() ==
                  napi_uint8_array) {
+    size_t Length = Info[0].As<Napi::TypedArray>().ElementLength();
+    size_t Offset = Info[0].As<Napi::TypedArray>().ByteOffset();
     // Wasm binary format
     Napi::ArrayBuffer DataBuffer = Info[0].As<Napi::TypedArray>().ArrayBuffer();
     BC.setData(std::move(std::vector<uint8_t>(
-        static_cast<uint8_t *>(DataBuffer.Data()),
-        static_cast<uint8_t *>(DataBuffer.Data()) + DataBuffer.ByteLength())));
+        static_cast<uint8_t *>(DataBuffer.Data()) + Offset,
+        static_cast<uint8_t *>(DataBuffer.Data()) + Offset + Length)));
 
     if (!BC.isValidData()) {
       napi_throw_error(
           Info.Env(), "Error",
-          WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::UnknownBytecodeFormat).c_str());
+          WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::UnknownBytecodeFormat)
+              .c_str());
       return;
     }
   } else {
@@ -117,11 +121,6 @@ WasmEdgeAddon::WasmEdgeAddon(const Napi::CallbackInfo &Info)
         WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::InvalidInputFormat).c_str());
     return;
   }
-
-  // Enable all available proposals
-  ProposalConf.addProposal(SSVM::Proposal::BulkMemoryOperations);
-  ProposalConf.addProposal(SSVM::Proposal::ReferenceTypes);
-  ProposalConf.addProposal(SSVM::Proposal::SIMD);
 }
 
 void WasmEdgeAddon::InitVM(const Napi::CallbackInfo &Info) {
@@ -129,23 +128,31 @@ void WasmEdgeAddon::InitVM(const Napi::CallbackInfo &Info) {
     return;
   }
 
-  Configure = new SSVM::VM::Configure();
-  Configure->addVMType(SSVM::VM::Configure::VMType::Wasi);
-  Configure->addVMType(SSVM::VM::Configure::VMType::SSVM_Process);
-  VM = new SSVM::VM::VM(ProposalConf, *Configure);
+  Store = WasmEdge_StoreCreate();
+  Configure = WasmEdge_ConfigureCreate();
+  Stat = WasmEdge_StatisticsCreate();
+  WasmEdge_ConfigureAddProposal(Configure,
+                                WasmEdge_Proposal_BulkMemoryOperations);
+  WasmEdge_ConfigureAddProposal(Configure, WasmEdge_Proposal_ReferenceTypes);
+  WasmEdge_ConfigureAddProposal(Configure, WasmEdge_Proposal_SIMD);
+  WasmEdge_ConfigureAddHostRegistration(Configure,
+                                        WasmEdge_HostRegistration_Wasi);
+  WasmEdge_ConfigureAddHostRegistration(
+      Configure, WasmEdge_HostRegistration_WasmEdge_Process);
+  VM = WasmEdge_VMCreate(Configure, Store);
 
-  SSVM::Log::setErrorLoggingLevel();
+  WasmEdge_LogSetErrorLevel();
 
-  SSVM::Host::SSVMProcessModule *ProcMod =
-    dynamic_cast<SSVM::Host::SSVMProcessModule *>(
-        VM->getImportModule(SSVM::VM::Configure::VMType::SSVM_Process));
-
-  if (Options.isAllowedCmdsAll()) {
-    ProcMod->getEnv().AllowedAll = true;
+  WasmEdge_ImportObjectContext *ProcObject = WasmEdge_VMGetImportModuleContext(
+      VM, WasmEdge_HostRegistration_WasmEdge_Process);
+  std::vector<const char *> AllowCmds;
+  AllowCmds.reserve(Options.getAllowedCmds().size());
+  for (auto &cmd : Options.getAllowedCmds()) {
+    AllowCmds.push_back(cmd.c_str());
   }
-  for (auto &Cmd : Options.getAllowedCmds()) {
-    ProcMod->getEnv().AllowedCmd.insert(Cmd);
-  }
+  WasmEdge_ImportObjectInitWasmEdgeProcess(ProcObject, AllowCmds.data(),
+                                           AllowCmds.size(),
+                                           Options.isAllowedCmdsAll());
 
   Inited = true;
 }
@@ -155,20 +162,23 @@ void WasmEdgeAddon::FiniVM() {
     return;
   }
 
-  Stat = VM->getStatistics();
-  delete VM;
+  Stat = WasmEdge_VMGetStatisticsContext(VM);
+  WasmEdge_VMDelete(VM);
   VM = nullptr;
-  delete Configure;
+  WasmEdge_StoreDelete(Store);
+  Store = nullptr;
+  WasmEdge_ConfigureDelete(Configure);
   Configure = nullptr;
   MemInst = nullptr;
+  WasiMod = nullptr;
 
   Inited = false;
 }
 
 void WasmEdgeAddon::InitWasi(const Napi::CallbackInfo &Info,
-                         const std::string &FuncName) {
-  WasiMod = dynamic_cast<SSVM::Host::WasiModule *>(
-      VM->getImportModule(SSVM::VM::Configure::VMType::Wasi));
+                             const std::string &FuncName) {
+  WasiMod =
+      WasmEdge_VMGetImportModuleContext(VM, WasmEdge_HostRegistration_Wasi);
 
   /// Origin input can be Bytecode or FilePath
   if (Options.isAOTMode()) {
@@ -184,38 +194,38 @@ void WasmEdgeAddon::InitWasi(const Napi::CallbackInfo &Info,
     LoadWasm(Info);
   }
 
-  WasiMod->getEnv().init(Options.getWasiDirs(), FuncName,
-                         Options.getWasiCmdArgs(), Options.getWasiEnvs());
+  std::vector<const char *> WasiCmdArgs;
+  WasiCmdArgs.reserve(Options.getWasiCmdArgs().size());
+  for (auto &cmd : Options.getWasiCmdArgs()) {
+    WasiCmdArgs.push_back(cmd.c_str());
+  }
+  std::vector<const char *> WasiEnvs;
+  WasiEnvs.reserve(Options.getWasiEnvs().size());
+  for (auto &env : Options.getWasiEnvs()) {
+    WasiEnvs.push_back(env.c_str());
+  }
+  std::vector<const char *> WasiDirs;
+  WasiDirs.reserve(Options.getWasiDirs().size());
+  for (auto &dir : Options.getWasiDirs()) {
+    WasiDirs.push_back(dir.c_str());
+  }
+  WasmEdge_ImportObjectInitWASI(WasiMod, WasiCmdArgs.data(), WasiCmdArgs.size(),
+                                WasiEnvs.data(), WasiEnvs.size(),
+                                WasiDirs.data(), WasiDirs.size(), nullptr, 0);
 
   if (Options.isAOTMode()) {
     InitReactor(Info);
   }
 }
 
-void WasmEdgeAddon::ThrowNapiError(const Napi::CallbackInfo &Info, ErrorType Type) {
+void WasmEdgeAddon::ThrowNapiError(const Napi::CallbackInfo &Info,
+                                   ErrorType Type) {
   FiniVM();
-  napi_throw_error(Info.Env(), "Error", WASMEDGE::NAPI::ErrorMsgs.at(Type).c_str());
+  napi_throw_error(Info.Env(), "Error",
+                   WASMEDGE::NAPI::ErrorMsgs.at(Type).c_str());
 }
 
 bool WasmEdgeAddon::Compile() {
-  /// BC can be Bytecode or FilePath
-  if (BC.isFile()) {
-    SSVM::Loader::Loader Loader(ProposalConf);
-
-    /// File mode
-    /// We have to load bytecode from given file first.
-    std::filesystem::path P =
-        std::filesystem::absolute(std::filesystem::path(BC.getPath()));
-    if (auto Res = Loader.loadFile(P.string())) {
-      BC.setData(std::move(*Res));
-    } else {
-      const auto Err = static_cast<uint32_t>(Res.error());
-      std::cerr << "WASMEDGE::NAPI::AOT::Load file failed. Error code: " << Err;
-      return false;
-    }
-  }
-
-  /// Now, BC must be Bytecode only
   /// Calculate hash and path.
   Cache.init(BC.getData());
 
@@ -233,48 +243,27 @@ bool WasmEdgeAddon::Compile() {
 }
 
 bool WasmEdgeAddon::CompileBytecodeTo(const std::string &Path) {
-  SSVM::Loader::Loader Loader(ProposalConf);
+  /// Make sure BC is in FilePath mode
+  BC.setFileMode();
 
-  /// BC can be Bytecode or FilePath
-  if (BC.isFile()) {
-    /// File mode
-    /// We have to load bytecode from given file first.
-    std::filesystem::path P =
-        std::filesystem::absolute(std::filesystem::path(BC.getPath()));
-    if (auto Res = Loader.loadFile(P.string())) {
-      BC.setData(std::move(*Res));
-    } else {
-      const auto Err = static_cast<uint32_t>(Res.error());
-      std::cerr << "WASMEDGE::NAPI::AOT::Load file failed. Error code: " << Err;
-      return false;
-    }
-  }
-
-  std::unique_ptr<SSVM::AST::Module> Module;
-  if (auto Res = Loader.parseModule(BC.getData())) {
-    Module = std::move(*Res);
-  } else {
-    const auto Err = static_cast<uint32_t>(Res.error());
-    std::cerr << "WASMEDGE::NAPI::AOT::Parse module failed. Error code: " << Err;
-    return false;
-  }
-
-  SSVM::AOT::Compiler Compiler;
   if (Options.isMeasuring()) {
-    Compiler.setInstructionCounting();
-    Compiler.setGasMeasuring();
+    WasmEdge_ConfigureCompilerSetCostMeasuring(Configure, true);
+    WasmEdge_ConfigureCompilerSetInstructionCounting(Configure, true);
   }
-  if (auto Res = Compiler.compile(BC.getData(), *Module, Path); !Res) {
-    const auto Err = static_cast<uint32_t>(Res.error());
-    std::cerr << "WASMEDGE::NAPI::AOT::Compile failed. Error code: " << Err;
+  WasmEdge_CompilerContext *CompilerCxt = WasmEdge_CompilerCreate(Configure);
+  WasmEdge_Result Res =
+      WasmEdge_CompilerCompile(CompilerCxt, BC.getPath().c_str(), Path.c_str());
+  if (!WasmEdge_ResultOK(Res)) {
+    std::cerr << "WasmEdge Compile failed. Error: "
+              << WasmEdge_ResultGetMessage(Res);
     return false;
   }
   return true;
 }
 
 void WasmEdgeAddon::PrepareResource(const Napi::CallbackInfo &Info,
-                                std::vector<SSVM::ValVariant> &Args,
-                                IntKind IntT) {
+                                    std::vector<WasmEdge_Value> &Args,
+                                    IntKind IntT) {
   for (std::size_t I = 1; I < Info.Length(); I++) {
     Napi::Value Arg = Info[I];
     uint32_t MallocSize = 0, MallocAddr = 0;
@@ -283,17 +272,18 @@ void WasmEdgeAddon::PrepareResource(const Napi::CallbackInfo &Info,
       case IntKind::SInt32:
       case IntKind::UInt32:
       case IntKind::Default:
-        Args.emplace_back(Arg.As<Napi::Number>().Uint32Value());
+        Args.emplace_back(
+            WasmEdge_ValueGenI32(Arg.As<Napi::Number>().Int32Value()));
         break;
       case IntKind::SInt64:
       case IntKind::UInt64: {
         if (Args.size() == 0) {
           // Set memory offset for return value
-          Args.emplace_back<uint32_t>(0);
+          Args.emplace_back(WasmEdge_ValueGenI32(0));
         }
         uint64_t V = static_cast<uint64_t>(Arg.As<Napi::Number>().Int64Value());
-        Args.emplace_back(castFromU64ToU32(V));
-        Args.emplace_back(castFromU64ToU32(V >> 32));
+        Args.emplace_back(WasmEdge_ValueGenI32(castFromU64ToU32(V)));
+        Args.emplace_back(WasmEdge_ValueGenI32(castFromU64ToU32(V >> 32)));
         break;
       }
       default:
@@ -315,52 +305,63 @@ void WasmEdgeAddon::PrepareResource(const Napi::CallbackInfo &Info,
       // TODO: support other types
       napi_throw_error(
           Info.Env(), "Error",
-          WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::UnsupportedArgumentType).c_str());
+          WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::UnsupportedArgumentType)
+              .c_str());
       return;
     }
 
     // Malloc
-    std::vector<SSVM::ValVariant> Params, Rets;
-    Params.emplace_back(MallocSize);
-    auto Res = VM->execute("__wbindgen_malloc", Params);
-    if (!Res) {
-      napi_throw_error(
-          Info.Env(), "Error",
-          WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::WasmBindgenMallocFailed).c_str());
+    WasmEdge_Value Params = WasmEdge_ValueGenI32(MallocSize);
+    WasmEdge_Value Rets;
+    WasmEdge_String FuncName =
+        WasmEdge_StringCreateByCString("__wbindgen_malloc");
+    WasmEdge_Result Res =
+        WasmEdge_VMExecute(VM, FuncName, &Params, 1, &Rets, 1);
+    WasmEdge_StringDelete(FuncName);
+    if (!WasmEdge_ResultOK(Res)) {
+      napi_throw_error(Info.Env(), "Error", WasmEdge_ResultGetMessage(Res));
       return;
     }
-    Rets = *Res;
-    MallocAddr = std::get<uint32_t>(Rets[0]);
+    MallocAddr = (uint32_t)WasmEdge_ValueGetI32(Rets);
 
     // Prepare arguments and memory data
-    Args.emplace_back(MallocAddr);
-    Args.emplace_back(MallocSize);
+    Args.emplace_back(WasmEdge_ValueGenI32(MallocAddr));
+    Args.emplace_back(WasmEdge_ValueGenI32(MallocSize));
 
     // Setup memory
     if (Arg.IsString()) {
       std::string StrArg = Arg.As<Napi::String>().Utf8Value();
       std::vector<uint8_t> StrArgVec(StrArg.begin(), StrArg.end());
-      MemInst->setBytes(StrArgVec, MallocAddr, 0, StrArgVec.size());
+      WasmEdge_MemoryInstanceSetData(MemInst, StrArgVec.data(), MallocAddr,
+                                     StrArgVec.size());
     } else if (Arg.IsTypedArray() &&
                Arg.As<Napi::TypedArray>().TypedArrayType() ==
                    napi_uint8_array) {
       Napi::ArrayBuffer DataBuffer = Arg.As<Napi::TypedArray>().ArrayBuffer();
       uint8_t *Data = (uint8_t *)DataBuffer.Data();
-      MemInst->setArray(Data, MallocAddr, DataBuffer.ByteLength());
+      WasmEdge_MemoryInstanceSetData(MemInst, Data, MallocAddr,
+                                     DataBuffer.ByteLength());
     }
   }
 }
 
 void WasmEdgeAddon::PrepareResource(const Napi::CallbackInfo &Info,
-                                std::vector<SSVM::ValVariant> &Args) {
+                                    std::vector<WasmEdge_Value> &Args) {
   PrepareResource(Info, Args, IntKind::Default);
 }
 
 void WasmEdgeAddon::ReleaseResource(const Napi::CallbackInfo &Info,
-                                const uint32_t Offset, const uint32_t Size) {
-  std::vector<SSVM::ValVariant> Params = {Offset, Size};
-  auto Res = VM->execute("__wbindgen_free", Params);
-  if (!Res) {
+                                    const uint32_t Offset,
+                                    const uint32_t Size) {
+  WasmEdge_Value Params[2] = {WasmEdge_ValueGenI32(Offset),
+                              WasmEdge_ValueGenI32(Size)};
+  WasmEdge_String WasmFuncName =
+      WasmEdge_StringCreateByCString("__wbindgen_free");
+  WasmEdge_Result Res =
+      WasmEdge_VMExecute(VM, WasmFuncName, Params, 2, nullptr, 0);
+  WasmEdge_StringDelete(WasmFuncName);
+
+  if (!WasmEdge_ResultOK(Res)) {
     napi_throw_error(
         Info.Env(), "Error",
         WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::WasmBindgenFreeFailed).c_str());
@@ -378,36 +379,47 @@ Napi::Value WasmEdgeAddon::RunStart(const Napi::CallbackInfo &Info) {
   InitWasi(Info, FuncName);
 
   // command mode
-  auto Result = VM->runWasmFile(BC.getPath(), "_start");
-  if (!Result) {
+  WasmEdge_String WasmFuncName =
+      WasmEdge_StringCreateByCString(FuncName.c_str());
+  WasmEdge_Value Ret;
+  WasmEdge_Result Res = WasmEdge_VMRunWasmFromFile(
+      VM, BC.getPath().c_str(), WasmFuncName, nullptr, 0, &Ret, 1);
+  WasmEdge_StringDelete(WasmFuncName);
+
+  if (!WasmEdge_ResultOK(Res)) {
     ThrowNapiError(Info, ErrorType::ExecutionFailed);
     return Napi::Value();
   }
-  auto ErrCode = WasiMod->getEnv().getExitCode();
-  WasiMod->getEnv().fini();
+  auto ErrCode = WasmEdge_ResultGetCode(Res);
   FiniVM();
   return Napi::Number::New(Info.Env(), ErrCode);
 }
 
 void WasmEdgeAddon::InitReactor(const Napi::CallbackInfo &Info) {
   using namespace std::literals::string_literals;
-  const auto InitFunc = "_initialize"s;
+  WasmEdge_String InitFunc = WasmEdge_StringCreateByCString("_initialize");
 
   bool HasInit = false;
 
-  for (const auto &Func : VM->getFunctionList()) {
-    if (Func.first == InitFunc) {
+  uint32_t FuncListLen = WasmEdge_VMGetFunctionListLength(VM);
+  WasmEdge_String FuncList[FuncListLen];
+  WasmEdge_VMGetFunctionList(VM, FuncList, nullptr, FuncListLen);
+  for (std::size_t I = 1; I < FuncListLen; I++) {
+    if (WasmEdge_StringIsEqual(FuncList[I], InitFunc)) {
       HasInit = true;
     }
   }
 
   if (HasInit) {
-    if (auto Result = VM->execute(InitFunc); !Result) {
+    WasmEdge_Value Ret;
+    WasmEdge_Result Res = WasmEdge_VMExecute(VM, InitFunc, nullptr, 0, &Ret, 1);
+    if (!WasmEdge_ResultOK(Res)) {
       napi_throw_error(
           Info.Env(), "Error",
           WASMEDGE::NAPI::ErrorMsgs.at(ErrorType::InitReactorFailed).c_str());
     }
   }
+  WasmEdge_StringDelete(InitFunc);
 }
 
 void WasmEdgeAddon::Run(const Napi::CallbackInfo &Info) {
@@ -420,15 +432,19 @@ void WasmEdgeAddon::Run(const Napi::CallbackInfo &Info) {
 
   InitWasi(Info, FuncName);
 
-  std::vector<SSVM::ValVariant> Args, Rets;
+  std::vector<WasmEdge_Value> Args;
   PrepareResource(Info, Args);
-  auto Res = VM->execute(FuncName, Args);
+  WasmEdge_String WasmFuncName =
+      WasmEdge_StringCreateByCString(FuncName.c_str());
+  WasmEdge_Value Ret;
+  WasmEdge_Result Res =
+      WasmEdge_VMExecute(VM, WasmFuncName, Args.data(), Args.size(), &Ret, 1);
+  WasmEdge_StringDelete(WasmFuncName);
 
-  if (!Res) {
+  if (!WasmEdge_ResultOK(Res)) {
     ThrowNapiError(Info, ErrorType::ExecutionFailed);
   }
 
-  WasiMod->getEnv().fini();
   FiniVM();
 }
 
@@ -442,7 +458,7 @@ Napi::Value WasmEdgeAddon::RunCompile(const Napi::CallbackInfo &Info) {
 }
 
 Napi::Value WasmEdgeAddon::RunIntImpl(const Napi::CallbackInfo &Info,
-                                  IntKind IntT) {
+                                      IntKind IntT) {
   InitVM(Info);
   std::string FuncName = "";
   if (Info.Length() > 0) {
@@ -451,24 +467,29 @@ Napi::Value WasmEdgeAddon::RunIntImpl(const Napi::CallbackInfo &Info,
 
   InitWasi(Info, FuncName);
 
-  std::vector<SSVM::ValVariant> Args, Rets;
+  std::vector<WasmEdge_Value> Args;
   PrepareResource(Info, Args, IntT);
-  auto Res = VM->execute(FuncName, Args);
+  WasmEdge_String WasmFuncName =
+      WasmEdge_StringCreateByCString(FuncName.c_str());
+  WasmEdge_Value Ret;
+  WasmEdge_Result Res =
+      WasmEdge_VMExecute(VM, WasmFuncName, Args.data(), Args.size(), &Ret, 1);
+  WasmEdge_StringDelete(WasmFuncName);
 
-  if (Res) {
-    Rets = *Res;
-    WasiMod->getEnv().fini();
+  if (WasmEdge_ResultOK(Res)) {
     switch (IntT) {
     case IntKind::SInt32:
     case IntKind::UInt32:
     case IntKind::Default:
       FiniVM();
-      return Napi::Number::New(Info.Env(), std::get<uint32_t>(Rets[0]));
+      return Napi::Number::New(Info.Env(), (uint32_t)WasmEdge_ValueGetI32(Ret));
     case IntKind::SInt64:
     case IntKind::UInt64:
-      if (auto ResMem = MemInst->getBytes(0, 8)) {
-        uint32_t L = castFromBytesToU32(*ResMem, 0);
-        uint32_t H = castFromBytesToU32(*ResMem, 4);
+      uint8_t ResultMem[8];
+      Res = WasmEdge_MemoryInstanceGetData(MemInst, ResultMem, 0, 8);
+      if (WasmEdge_ResultOK(Res)) {
+        uint32_t L = castFromBytesToU32(ResultMem, 0);
+        uint32_t H = castFromBytesToU32(ResultMem, 4);
         FiniVM();
         return Napi::Number::New(Info.Env(), castFromU32ToU64(L, H));
       }
@@ -508,31 +529,40 @@ Napi::Value WasmEdgeAddon::RunString(const Napi::CallbackInfo &Info) {
 
   InitWasi(Info, FuncName);
 
+  WasmEdge_Result Res;
+  std::vector<WasmEdge_Value> Args;
   uint32_t ResultMemAddr = 8;
-  std::vector<SSVM::ValVariant> Args, Rets;
-  Args.emplace_back(ResultMemAddr);
+  Args.emplace_back(WasmEdge_ValueGenI32(ResultMemAddr));
   PrepareResource(Info, Args);
-  auto Res = VM->execute(FuncName, Args);
-  if (!Res) {
+  WasmEdge_String WasmFuncName =
+      WasmEdge_StringCreateByCString(FuncName.c_str());
+  WasmEdge_Value Ret;
+  Res = WasmEdge_VMExecute(VM, WasmFuncName, Args.data(), Args.size(), &Ret, 1);
+  WasmEdge_StringDelete(WasmFuncName);
+
+  if (!WasmEdge_ResultOK(Res)) {
     ThrowNapiError(Info, ErrorType::ExecutionFailed);
     return Napi::Value();
   }
-  Rets = *Res;
 
+  uint8_t ResultMem[8];
+  Res = WasmEdge_MemoryInstanceGetData(MemInst, ResultMem, ResultMemAddr, 8);
   uint32_t ResultDataAddr = 0;
   uint32_t ResultDataLen = 0;
-  if (auto ResultMem = MemInst->getBytes(ResultMemAddr, 8)) {
-    ResultDataAddr = (*ResultMem)[0] | ((*ResultMem)[1] << 8) |
-                     ((*ResultMem)[2] << 16) | ((*ResultMem)[3] << 24);
-    ResultDataLen = (*ResultMem)[4] | ((*ResultMem)[5] << 8) |
-                    ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
+  if (WasmEdge_ResultOK(Res)) {
+    ResultDataAddr = ResultMem[0] | (ResultMem[1] << 8) | (ResultMem[2] << 16) |
+                     (ResultMem[3] << 24);
+    ResultDataLen = ResultMem[4] | (ResultMem[5] << 8) | (ResultMem[6] << 16) |
+                    (ResultMem[7] << 24);
   } else {
     ThrowNapiError(Info, ErrorType::BadMemoryAccess);
     return Napi::Value();
   }
 
-  if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
-    ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
+  std::vector<uint8_t> ResultData(ResultDataLen);
+  Res = WasmEdge_MemoryInstanceGetData(MemInst, ResultData.data(),
+                                       ResultDataAddr, ResultDataLen);
+  if (WasmEdge_ResultOK(Res)) {
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
   } else {
     ThrowNapiError(Info, ErrorType::BadMemoryAccess);
@@ -540,7 +570,6 @@ Napi::Value WasmEdgeAddon::RunString(const Napi::CallbackInfo &Info) {
   }
 
   std::string ResultString(ResultData.begin(), ResultData.end());
-  WasiMod->getEnv().fini();
   FiniVM();
   return Napi::String::New(Info.Env(), ResultString);
 }
@@ -554,32 +583,40 @@ Napi::Value WasmEdgeAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
 
   InitWasi(Info, FuncName);
 
+  WasmEdge_Result Res;
+  std::vector<WasmEdge_Value> Args;
   uint32_t ResultMemAddr = 8;
-  std::vector<SSVM::ValVariant> Args, Rets;
-  Args.emplace_back(ResultMemAddr);
+  Args.emplace_back(WasmEdge_ValueGenI32(ResultMemAddr));
   PrepareResource(Info, Args);
-  auto Res = VM->execute(FuncName, Args);
-  if (!Res) {
+  WasmEdge_String WasmFuncName =
+      WasmEdge_StringCreateByCString(FuncName.c_str());
+  WasmEdge_Value Ret;
+  Res = WasmEdge_VMExecute(VM, WasmFuncName, Args.data(), Args.size(), &Ret, 1);
+  WasmEdge_StringDelete(WasmFuncName);
+
+  if (!WasmEdge_ResultOK(Res)) {
     ThrowNapiError(Info, ErrorType::ExecutionFailed);
     return Napi::Value();
   }
-  Rets = *Res;
 
+  uint8_t ResultMem[8];
+  Res = WasmEdge_MemoryInstanceGetData(MemInst, ResultMem, ResultMemAddr, 8);
   uint32_t ResultDataAddr = 0;
   uint32_t ResultDataLen = 0;
-  /// Retrieve address and length of result data
-  if (auto ResultMem = MemInst->getBytes(ResultMemAddr, 8)) {
-    ResultDataAddr = (*ResultMem)[0] | ((*ResultMem)[1] << 8) |
-                     ((*ResultMem)[2] << 16) | ((*ResultMem)[3] << 24);
-    ResultDataLen = (*ResultMem)[4] | ((*ResultMem)[5] << 8) |
-                    ((*ResultMem)[6] << 16) | ((*ResultMem)[7] << 24);
+  if (WasmEdge_ResultOK(Res)) {
+    ResultDataAddr = ResultMem[0] | (ResultMem[1] << 8) | (ResultMem[2] << 16) |
+                     (ResultMem[3] << 24);
+    ResultDataLen = ResultMem[4] | (ResultMem[5] << 8) | (ResultMem[6] << 16) |
+                    (ResultMem[7] << 24);
   } else {
     ThrowNapiError(Info, ErrorType::BadMemoryAccess);
     return Napi::Value();
   }
-  /// Get result data
-  if (auto Res = MemInst->getBytes(ResultDataAddr, ResultDataLen)) {
-    ResultData = std::vector<uint8_t>((*Res).begin(), (*Res).end());
+
+  std::vector<uint8_t> ResultData(ResultDataLen);
+  Res = WasmEdge_MemoryInstanceGetData(MemInst, ResultData.data(),
+                                       ResultDataAddr, ResultDataLen);
+  if (WasmEdge_ResultOK(Res)) {
     ReleaseResource(Info, ResultDataAddr, ResultDataLen);
   } else {
     ThrowNapiError(Info, ErrorType::BadMemoryAccess);
@@ -590,7 +627,6 @@ Napi::Value WasmEdgeAddon::RunUint8Array(const Napi::CallbackInfo &Info) {
       Napi::ArrayBuffer::New(Info.Env(), &(ResultData[0]), ResultDataLen);
   Napi::Uint8Array ResultTypedArray = Napi::Uint8Array::New(
       Info.Env(), ResultDataLen, ResultArrayBuffer, 0, napi_uint8_array);
-  WasiMod->getEnv().fini();
   FiniVM();
   return ResultTypedArray;
 }
@@ -604,29 +640,39 @@ void WasmEdgeAddon::LoadWasm(const Napi::CallbackInfo &Info) {
     BC.setPath(Cache.getPath());
   }
 
-  if (BC.isFile() && !VM->loadWasm(BC.getPath())) {
-    ThrowNapiError(Info, ErrorType::LoadWasmFailed);
-    return;
-  } else if (BC.isValidData() && !(VM->loadWasm(BC.getData()))) {
-    ThrowNapiError(Info, ErrorType::LoadWasmFailed);
-    return;
+  WasmEdge_Result Res;
+  if (BC.isFile()) {
+    Res = WasmEdge_VMLoadWasmFromFile(VM, BC.getPath().c_str());
+    if (!WasmEdge_ResultOK(Res)) {
+      ThrowNapiError(Info, ErrorType::LoadWasmFailed);
+      return;
+    }
+  } else if (BC.isValidData()) {
+    Res = WasmEdge_VMLoadWasmFromBuffer(VM, BC.getData().data(),
+                                        BC.getData().size());
+    if (!WasmEdge_ResultOK(Res)) {
+      ThrowNapiError(Info, ErrorType::LoadWasmFailed);
+      return;
+    }
   }
 
-  if (!(VM->validate())) {
+  Res = WasmEdge_VMValidate(VM);
+  if (!WasmEdge_ResultOK(Res)) {
     ThrowNapiError(Info, ErrorType::ValidateWasmFailed);
     return;
   }
 
-  if (!(VM->instantiate())) {
+  Res = WasmEdge_VMInstantiate(VM);
+  if (!WasmEdge_ResultOK(Res)) {
     ThrowNapiError(Info, ErrorType::InstantiateWasmFailed);
     return;
   }
 
   // Get memory instance
-  auto &Store = VM->getStoreManager();
-  auto *ModInst = *(Store.getActiveModule());
-  uint32_t MemAddr = *(ModInst->getMemAddr(0));
-  MemInst = *Store.getMemory(MemAddr);
+  uint32_t MemLen = WasmEdge_StoreListMemoryLength(Store);
+  WasmEdge_String MemNames[MemLen];
+  WasmEdge_StoreListMemory(Store, MemNames, MemLen);
+  MemInst = WasmEdge_StoreFindMemory(Store, MemNames[0]);
 }
 
 Napi::Value WasmEdgeAddon::GetStatistics(const Napi::CallbackInfo &Info) {
@@ -634,24 +680,16 @@ Napi::Value WasmEdgeAddon::GetStatistics(const Napi::CallbackInfo &Info) {
   if (!Options.isMeasuring()) {
     RetStat.Set("Measure", Napi::Boolean::New(Info.Env(), false));
   } else {
-    auto Nano = [](auto &&Duration) {
-      return std::chrono::nanoseconds(Duration).count();
-    };
-
     RetStat.Set("Measure", Napi::Boolean::New(Info.Env(), true));
-    RetStat.Set("TotalExecutionTime",
-                Napi::Number::New(Info.Env(), Nano(Stat.getTotalExecTime())));
-    RetStat.Set("WasmExecutionTime",
-                Napi::Number::New(Info.Env(), Nano(Stat.getWasmExecTime())));
     RetStat.Set(
-        "HostFunctionExecutionTime",
-        Napi::Number::New(Info.Env(), Nano(Stat.getHostFuncExecTime())));
-    RetStat.Set("InstructionCount",
-                Napi::Number::New(Info.Env(), Stat.getInstrCount()));
-    RetStat.Set("TotalGasCost",
-                Napi::Number::New(Info.Env(), Stat.getTotalCost()));
+        "InstructionCount",
+        Napi::Number::New(Info.Env(), WasmEdge_StatisticsGetInstrCount(Stat)));
+    RetStat.Set(
+        "TotalGasCost",
+        Napi::Number::New(Info.Env(), WasmEdge_StatisticsGetTotalCost(Stat)));
     RetStat.Set("InstructionPerSecond",
-                Napi::Number::New(Info.Env(), Stat.getInstrPerSecond()));
+                Napi::Number::New(Info.Env(),
+                                  WasmEdge_StatisticsGetInstrPerSecond(Stat)));
   }
 
   return RetStat;

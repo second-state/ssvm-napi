@@ -1,10 +1,10 @@
-name: Build SSVM-napi
+name: Build wasmedge-core
 
 inputs:
   cc:
-    default: 'clang'
+    default: 'gcc'
   cxx:
-    default: 'clang++'
+    default: 'g++'
   path:
     default: '.'
 

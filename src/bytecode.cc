@@ -1,5 +1,10 @@
 #include "bytecode.h"
 
+#include <fstream>
+
+#include <boost/functional/hash.hpp>
+#include <iterator>
+
 namespace WASMEDGE {
 namespace NAPI {
 
@@ -19,6 +24,32 @@ void Bytecode::setData(const std::vector<uint8_t> &IData) noexcept {
   } else {
     Mode = InputMode::Invalid;
   }
+}
+
+const std::vector<uint8_t> &Bytecode::getData() noexcept {
+  if (!isFile()) {
+    return Data;
+  }
+  /// Read bytecode from file is in FilePath mode
+  std::ifstream File(Path.c_str(), std::ios::binary);
+  Data = std::vector<uint8_t>((std::istreambuf_iterator<char>(File)),
+                              std::istreambuf_iterator<char>());
+  File.close();
+  return Data;
+}
+
+void Bytecode::setFileMode() noexcept {
+  if (isFile()) {
+    return;
+  }
+  size_t CodeHash = boost::hash_range(Data.begin(), Data.end());
+  Path = std::string("/tmp/wasmedge.tmp.") + std::to_string(CodeHash) +
+         std::string(".wasm");
+  std::ofstream File(Path.c_str());
+  std::ostream_iterator<uint8_t> OutIter(File);
+  std::copy(Data.begin(), Data.end(), OutIter);
+  File.close();
+  Mode = InputMode::FilePath;
 }
 
 bool Bytecode::isFile() const noexcept {

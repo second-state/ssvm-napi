@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -xe
-ssvmup build
+rustwasmc build
 cd pkg
 npm install ../..
+sed -i "s/require('ssvm')/require('wasmedge-core')/" integers_lib.js
 cd -
 mocha js
-ssvmup clean
+rustwasmc clean
