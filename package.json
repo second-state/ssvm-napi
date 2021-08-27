@@ -34,6 +34,7 @@
   "scripts": {
     "test": "cd test && ./test.sh",
     "preinstall": "./scripts/preinstall.sh",
-    "install": "node-pre-gyp install --fallback-to-build"
+    "install": "node-pre-gyp install --fallback-to-build",
+    "release": "node-pre-gyp install --fallback-to-build --update-binary"
   }
 }
